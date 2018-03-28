@@ -9,6 +9,7 @@ import Control.Lens
 import Data.Vector
 import Data.Bits
 
+--TODO we need to rething the structure of this.
 data EmuData =
   Eight
   {
@@ -155,6 +156,36 @@ ldRegRegAddr r (h, l) = \gb -> ld (setRegister gb r) (getMemory gb $ getRegister
 ldRegAddrReg :: (Register, Register) -> Register -> (Gameboy -> Gameboy)
 ldRegAddrReg (h, l) r = \gb -> ld (setMemory gb $ getRegisters gb h l) (getRegister gb r)
 
+incrementEmuData :: EmuData -> EmuData
+incrementEmuData (Eight d) = Eight $ d + 1
+incrementEmuData (Sixteen d) = Sixteen $ d + 1
+
+decrementEmuData :: EmuData -> EmuData
+decrementEmuData (Eight d) = Eight $ d - 1
+decrementEmuData (Sixteen d) = Sixteen $ d - 1
+
+isZeroEmuData :: EmuData -> Bool
+isZeroEmuData (Eight d) = d == 0b00000000
+isZeroEmuData (Sixteen d) = d == 0b0000000000000000
+
+--TODO this might not work for 16 bit registers.
+incrementRegister :: Register -> (Gameboy -> Gameboy)
+incrementRegister r = (\gb -> (setRegister gb r) (increment gb)) .
+                      carry .
+                      halfCarry .
+                      subtractf .
+                      zero
+  where
+    increment = \gb -> incrementEmuData $ getRegister gb r
+    zero = \gb -> (setFlag zeroFlag $ isZeroEmuData $ increment gb) gb
+    carry = \gb -> setFlag carryFlag ((_eight . increment $ gb) < (_eight $ getRegister gb r)) gb
+    halfCarry = \gb -> setFlag halfCarryFlag (
+      ((_eight . increment $ gb) .&. 0b00001111) < ((_eight $ getRegister gb r) .&. 0b00001111)) gb
+    subtractf = \gb -> setFlag subtractFlag False gb
+
+--ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
+--ldRegRegData (r1, r2) = 
+
 setFlag :: Word8 -> Bool -> Gameboy -> Gameboy
 setFlag w True  gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .|. w
 setFlag w False gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .&. complement w
@@ -178,7 +209,11 @@ addReg r = \gb -> accumAdd (getRegister gb r) gb
 
 decodeOp :: EmuData-> Instruction
 decodeOp (Eight 0x00) = Instruction (Eight 0x00) "NOP" id
---TODO 0x01-0x3F``
+--TODO 0x01 "LD BC, d16"
+decodeOp (Eight 0x02) = Instruction (Eight 0x02) "LD (BC), A" (ldRegAddrReg (B, C) A)
+--TODO 0x03 "INC BC"
+decodeOp (Eight 0x04) = Instruction (Eight 0x04) "INC B" (incrementRegister B)
+--TODO 0x05-0x3F
 decodeOp (Eight 0x40) = Instruction (Eight 0x40) "ld B, B" id
 decodeOp (Eight 0x41) = Instruction (Eight 0x41) "ld B, C" (ldReg B C)
 decodeOp (Eight 0x42) = Instruction (Eight 0x42) "ld B, D" (ldReg B D)
