@@ -157,18 +157,29 @@ ldRegAddrReg :: (Register, Register) -> Register -> (Gameboy -> Gameboy)
 ldRegAddrReg (h, l) r = \gb -> ld (setMemory gb $ getRegisters gb h l) (getRegister gb r)
 
 incrementEmuData :: EmuData -> EmuData
-incrementEmuData (Eight d) = Eight $ d + 1
+incrementEmuData (Eight d)   = Eight $ d + 1
 incrementEmuData (Sixteen d) = Sixteen $ d + 1
 
 decrementEmuData :: EmuData -> EmuData
-decrementEmuData (Eight d) = Eight $ d - 1
+decrementEmuData (Eight d)   = Eight $ d - 1
 decrementEmuData (Sixteen d) = Sixteen $ d - 1
 
 isZeroEmuData :: EmuData -> Bool
-isZeroEmuData (Eight d) = d == 0b00000000
+isZeroEmuData (Eight d)   = d == 0b00000000
 isZeroEmuData (Sixteen d) = d == 0b0000000000000000
 
---TODO this might not work for 16 bit registers.
+setZero :: EmuData -> (Gameboy -> Gameboy)
+setZero d = setFlag zeroFlag $ isZeroEmuData d
+
+setCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
+setCarry (Eight e1) (Eight e2) = setFlag zeroFlag (e1 < e2)
+setCarry (Sixteen e1) (Sixteen e2) = setFlag zeroFlag (e1 < e2)
+
+setHalfCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
+setHalfCarry (Eight e1) (Eight e2) =  setFlag halfCarryFlag ((e1 .&. 0b00001111) < (e2 .&. 0b00001111))
+setHalfCarry (Sixteen e1) (Sixteen e2) =  setFlag halfCarryFlag
+  ((e1 .&. 0b0000111111111111) < (e2 .&. 0b0000111111111111))
+
 incrementRegister :: Register -> (Gameboy -> Gameboy)
 incrementRegister r = (\gb -> (setRegister gb r) (increment gb)) .
                       carry .
@@ -177,10 +188,9 @@ incrementRegister r = (\gb -> (setRegister gb r) (increment gb)) .
                       zero
   where
     increment = \gb -> incrementEmuData $ getRegister gb r
-    zero = \gb -> (setFlag zeroFlag $ isZeroEmuData $ increment gb) gb
-    carry = \gb -> setFlag carryFlag ((_eight . increment $ gb) < (_eight $ getRegister gb r)) gb
-    halfCarry = \gb -> setFlag halfCarryFlag (
-      ((_eight . increment $ gb) .&. 0b00001111) < ((_eight $ getRegister gb r) .&. 0b00001111)) gb
+    zero      = \gb -> (setZero $ increment gb) gb
+    carry     = \gb -> setCarry (increment gb) (getRegister gb r) gb
+    halfCarry = \gb -> setHalfCarry (increment gb) (getRegister gb r) gb
     subtractf = \gb -> setFlag subtractFlag False gb
 
 --ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
@@ -197,11 +207,10 @@ accumAdd (Eight byte) = (\gb -> (setRegister gb A (addition gb))) .
                    subtractf .
                    halfCarry
   where
-    addition = \gb -> Eight (xor byte . _eight $ getRegister gb A)
-    zero = \gb -> setFlag zeroFlag ((_eight . addition $ gb) == 0b00000000) gb
-    carry = \gb -> setFlag carryFlag ((_eight . addition $ gb) < byte) gb
-    halfCarry = \gb -> setFlag halfCarryFlag (
-      ((_eight . addition $ gb) .&. 0b00001111) < (byte .&. 0b00001111)) gb
+    addition  = \gb -> Eight (xor byte . _eight $ getRegister gb A)
+    zero      = \gb -> (setZero $ addition gb) gb
+    carry     = \gb -> setCarry (addition gb) (Eight byte) gb
+    halfCarry = \gb -> setHalfCarry (addition  gb) (getRegister gb A) gb
     subtractf = \gb -> setFlag subtractFlag False gb
 
 addReg :: Register -> (Gameboy -> Gameboy)
