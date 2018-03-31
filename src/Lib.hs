@@ -139,6 +139,11 @@ getRegister gb r = gb ^. cpu . registerToLens r
 getRegisters :: Gameboy -> Register -> Register -> EmuData
 getRegisters gb r1 r2 = gb ^. cpu . composeRegisterLenses r1 r2
 
+isReg16 :: Register -> Bool
+isReg16 SP = True
+isReg16 PC = True
+isReg16 _  = False
+
 ld :: (EmuData -> Gameboy) -> EmuData -> Gameboy
 ld g d = g d
 
@@ -148,7 +153,7 @@ ldReg d s = \gb -> ld (setRegister gb d) (getRegister gb s)
 ldRegMem :: Register -> EmuData -> (Gameboy -> Gameboy)
 ldRegMem reg addr = \gb -> ld (setRegister gb reg) (getMemory gb addr)
 
---TODO come up with a better name
+--TODO come up with 1a better name
 ldRegRegAddr :: Register -> (Register, Register) -> (Gameboy -> Gameboy)
 ldRegRegAddr r (h, l) = \gb -> ld (setRegister gb r) (getMemory gb $ getRegisters gb h l)
 
@@ -156,6 +161,23 @@ ldRegRegAddr r (h, l) = \gb -> ld (setRegister gb r) (getMemory gb $ getRegister
 ldRegAddrReg :: (Register, Register) -> Register -> (Gameboy -> Gameboy)
 ldRegAddrReg (h, l) r = \gb -> ld (setMemory gb $ getRegisters gb h l) (getRegister gb r)
 
+ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
+ldRegRegData (r1, r2) = (\gb -> ld (setRegister gb r2) (getMemory gb $ getRegister gb PC)) .
+                        incrementRegister PC .
+                        (\gb -> ld (setRegister gb r1) (getMemory gb $ getRegister gb PC)) .
+                        incrementRegister PC
+
+ldRegData :: Register -> (Gameboy -> Gameboy)
+ldRegData r
+  | isReg16 r == False = \gb -> ld (setRegister (gb2 gb) r)
+    (combineEmuData (getMemory (gb1 gb) $
+                     getRegister (gb1 gb) PC) (getMemory (gb1 gb) $
+                                               getRegister (gb1 gb) PC))
+  | otherwise = \gb -> ld (setRegister (gb1 gb) r) (getMemory (gb1 gb) $ getRegister (gb1 gb) PC)
+    where
+      gb1 = incrementRegister PC
+      gb2 = incrementRegister PC . gb1
+      
 incrementEmuData :: EmuData -> EmuData
 incrementEmuData (Eight d)   = Eight $ d + 1
 incrementEmuData (Sixteen d) = Sixteen $ d + 1
@@ -193,8 +215,7 @@ incrementRegister r = (\gb -> (setRegister gb r) (increment gb)) .
     halfCarry = \gb -> setHalfCarry (increment gb) (getRegister gb r) gb
     subtractf = \gb -> setFlag subtractFlag False gb
 
---ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
---ldRegRegData (r1, r2) = 
+
 
 setFlag :: Word8 -> Bool -> Gameboy -> Gameboy
 setFlag w True  gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .|. w
@@ -298,4 +319,7 @@ decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" (addReg A)
 
 evalInstruction :: Gameboy -> Instruction -> Gameboy
 evalInstruction gb inst = gb & inst ^. operation
+
+data GameboyState f = GameboyState (Gameboy -> Gameboy)
+
 
