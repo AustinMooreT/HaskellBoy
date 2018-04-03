@@ -11,6 +11,8 @@ import Control.Lens
 import Data.Vector
 import Data.Bits
 
+
+
 data EmuData =
   Eight
   {
@@ -23,6 +25,20 @@ data EmuData =
   }
 makeLenses ''EmuData
 makePrisms ''EmuData
+
+combineEmuData :: EmuData -> EmuData -> EmuData
+combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ shiftL d1 8 .&. fromIntegral d2
+--TODO non exhaustive
+
+breakHiEnum :: EmuData -> EmuData
+breakHiEnum (Sixteen d) = Eight . fromIntegral $ shiftR d 8
+--TODO non exhaustive
+
+breakLoEnum :: EmuData -> EmuData
+breakLoEnum (Sixteen d) = Eight $ fromIntegral d
+--TODO non exhaustive
+
+
 
 data Cpu =
   Cpu
@@ -39,50 +55,6 @@ data Cpu =
     _registerPC :: EmuData
   }
 makeLenses ''Cpu
-
-data Memory =
-  Memory
-  {
-    _bytes :: Vector Word8
-  }
-makeLenses ''Memory
-
-data Gameboy =
-  Gameboy
-  {
-    _cpu    :: Cpu,
-    _memory :: Memory
-  }
-makeLenses ''Gameboy
-
-data Instruction =
-  Instruction
-  {
-    _opcode    :: EmuData,
-    _name      :: String,
-    _operation :: (Gameboy -> Gameboy)
-  }
-makeLenses ''Instruction
-
-combineEmuData :: EmuData -> EmuData -> EmuData
-combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ shiftL d1 8 .&. fromIntegral d2
---TODO non exhaustive
-
-breakHiEnum :: EmuData -> EmuData
-breakHiEnum (Sixteen d) = Eight . fromIntegral $ shiftR d 8
---TODO non exhaustive
-
-breakLoEnum :: EmuData -> EmuData
-breakLoEnum (Sixteen d) = Eight $ fromIntegral d
---TODO non exhaustive
-
-getMemory :: Gameboy -> EmuData -> EmuData
-getMemory gb (Sixteen addr) = Eight $ (view (memory . bytes) gb) ! (fromIntegral addr)
---TODO non exhaustive
-
-setMemory :: Gameboy -> EmuData -> EmuData -> Gameboy
-setMemory gb (Sixteen addr) (Eight d) = over (memory . bytes) (\y -> y // [(fromIntegral addr, d)]) gb
---TODO non exhaustive
 
 data Register = A | B | C | D | E | F | H | L | SP | PC
 
@@ -127,6 +99,48 @@ composeRegisterLenses reg1 reg2 = lens getter setter
   where
     getter __cpu = combineEmuData (registerToFunc reg1 __cpu) (registerToFunc reg2 __cpu)
     setter __cpu d = __cpu & registerToLens reg1 .~ breakHiEnum d & registerToLens reg2 .~ breakLoEnum d
+
+
+
+data Memory =
+  Memory
+  {
+    _bytes :: Vector Word8
+  }
+makeLenses ''Memory
+
+
+
+data Gameboy =
+  Gameboy
+  {
+    _cpu    :: Cpu,
+    _memory :: Memory
+  }
+makeLenses ''Gameboy
+
+
+
+data Instruction =
+  Instruction
+  {
+    _opcode    :: EmuData,
+    _name      :: String,
+    _operation :: (Gameboy -> Gameboy)
+  }
+makeLenses ''Instruction
+
+
+
+getMemory :: Gameboy -> EmuData -> EmuData
+getMemory gb (Sixteen addr) = Eight $ (view (memory . bytes) gb) ! (fromIntegral addr)
+--TODO non exhaustive
+
+setMemory :: Gameboy -> EmuData -> EmuData -> Gameboy
+setMemory gb (Sixteen addr) (Eight d) = over (memory . bytes) (\y -> y // [(fromIntegral addr, d)]) gb
+--TODO non exhaustive
+
+
 
 setRegister :: Gameboy -> Register -> EmuData -> Gameboy
 setRegister gb r d = gb & cpu . registerToLens r .~ d
@@ -306,22 +320,62 @@ decodeOp (Eight 0x04) = Instruction (Eight 0x04) "INC B" (incrementRegister B)
 decodeOp (Eight 0x05) = Instruction (Eight 0x05) "DEC B" (decrementRegister B)
 decodeOp (Eight 0x06) = Instruction (Eight 0x06) "LD B, d8" (ldRegData B)
 --TODO 0x07 "RLCA"
---TODO 0x08
---TODO 0x09
+--TODO 0x08 "LD (a16) SP"
+decodeOp (Eight 0x09) = Instruction (Eight 0x09) "ADD HL, BC" (addRegsRegs (H, L) (B, C))
 decodeOp (Eight 0x0A) = Instruction (Eight 0x0A) "LD A, (BC)" (ldRegRegAddr A (B, C))
 decodeOp (Eight 0x0B) = Instruction (Eight 0x0B) "DEC BC" (decrementRegistersWithoutFlags (B, C))
 decodeOp (Eight 0x0C) = Instruction (Eight 0x0C) "INC C" (incrementRegister C)
 decodeOp (Eight 0x0D) = Instruction (Eight 0x0D) "DEC C" (decrementRegister C)
 decodeOp (Eight 0x0E) = Instruction (Eight 0x0E) "LD C, d8" (ldRegData C)
---TODO 0x0F
---TODO 0x10
+--TODO 0x0F "RRCA"
+--TODO 0x10 "STOP 0"
 decodeOp (Eight 0x11) = Instruction (Eight 0x11) "LD DE, d16" (ldRegRegData (D, E))
 decodeOp (Eight 0x12) = Instruction (Eight 0x12) "LD (DE), A" (ldRegAddrReg (D, E) A)
 decodeOp (Eight 0x13) = Instruction (Eight 0x13) "INC DE" (incrementRegistersWithoutFlags (D, E))
 decodeOp (Eight 0x14) = Instruction (Eight 0x14) "INC D" (incrementRegister D)
 decodeOp (Eight 0x15) = Instruction (Eight 0x15) "DEC D" (decrementRegister D)
 decodeOp (Eight 0x16) = Instruction (Eight 0x16) "LD D, d8" (ldRegData D)
---TODO 0x17 - 0x3F
+--TODO 0x17 "RLA"
+--TODO 0x18 "JR r8"
+decodeOp (Eight 0x19) = Instruction (Eight 0x19) "ADD HL, DE" (addRegsRegs (H, L) (D, E))
+decodeOp (Eight 0x1A) = Instruction (Eight 0x1A) "LD A, (DE)" (ldRegRegAddr A (D, E))
+decodeOp (Eight 0x1B) = Instruction (Eight 0x1B) "DEC BC" (decrementRegistersWithoutFlags (D, E))
+decodeOp (Eight 0x1C) = Instruction (Eight 0x1C) "INC E" (incrementRegister E)
+decodeOp (Eight 0x1D) = Instruction (Eight 0x1D) "DEC E" (decrementRegister E)
+decodeOp (Eight 0x1E) = Instruction (Eight 0x1E) "LD C, d8" (ldRegData C)
+--TODO 0x1F "RRA"
+--TODO 0x20 "JR NZ, r8"
+decodeOp (Eight 0x21) = Instruction (Eight 0x21) "LD HL, d16" (ldRegRegData (H, L))
+--TODO 0x22 "LD (HL+), A"
+decodeOp (Eight 0x23) = Instruction (Eight 0x23) "INC HL" (incrementRegistersWithoutFlags (H, L))
+decodeOp (Eight 0x24) = Instruction (Eight 0x24) "INC H" (incrementRegister H)
+decodeOp (Eight 0x25) = Instruction (Eight 0x25) "DEC H" (decrementRegister H)
+decodeOp (Eight 0x28) = Instruction (Eight 0x26) "LD H, d8" (ldRegData H)
+--TODO 0x27 "DAA"
+--TODO 0x28 "JR Z, r8"
+decodeOp (Eight 0x29) = Instruction (Eight 0x29) "ADD HL, HL" (addRegsRegs (H, L) (H, L))
+--TODO 0x2A "LD A, (HL+)"
+decodeOp (Eight 0x2B) = Instruction (Eight 0x2B) "DEC HL" (decrementRegistersWithoutFlags (H, L))
+decodeOp (Eight 0x2C) = Instruction (Eight 0x2C) "INC L" (incrementRegister L)
+decodeOp (Eight 0x2D) = Instruction (Eight 0x2D) "DEC L" (decrementRegister L)
+decodeOp (Eight 0x2E) = Instruction (Eight 0x2E) "LD L, d8" (ldRegData L)
+--TODO 0x2F "CPL"
+--TODO 0x30 "JR NC, r8"
+decodeOp (Eight 0x31) = Instruction (Eight 0x31) "LD SP, d16" (ldRegData SP)
+--TODO 0x32 "LD (HL-), A"
+decodeOp (Eight 0x33) = Instruction (Eight 0x33) "INC SP" (incrementRegisterWithoutFlags SP)
+--TODO 0x34 "INC (HL)"
+--TODO 0x35 "DEC (HL)"
+--TODO 0x36 "LD (HL), d8"
+--TODO 0x37 "SCF"
+--TODO 0x38 "JR C, r8"
+--TODO 0x39 "ADD HL, SP"
+--TODO 0x3A "LD A, (HL-)"
+decodeOp (Eight 0x3B) = Instruction (Eight 0x3B) "DEC SP" (decrementRegisterWithoutFlags SP)
+decodeOp (Eight 0x3C) = Instruction (Eight 0x3C) "INC A" (incrementRegister A)
+decodeOp (Eight 0x3D) = Instruction (Eight 0x3D) "DEC A" (decrementRegister A)
+decodeOp (Eight 0x3E) = Instruction (Eight 0x3E) "LD A, d8" (ldRegData A)
+--TODO 0x3F "CCF"
 decodeOp (Eight 0x40) = Instruction (Eight 0x40) "ld B, B" id
 decodeOp (Eight 0x41) = Instruction (Eight 0x41) "ld B, C" (ldReg B C)
 decodeOp (Eight 0x42) = Instruction (Eight 0x42) "ld B, D" (ldReg B D)
@@ -396,8 +450,11 @@ decodeOp (Eight 0x85) = Instruction (Eight 0x85) "ADD A, L" (addReg L)
 decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" (addReg A)
 --TODO 0x88 - 0xFF
 
-
 evalInstruction :: Gameboy -> Instruction -> Gameboy
 evalInstruction gb inst = gb & inst ^. operation
 
+fetchNextInstr :: Gameboy -> Instruction
+fetchNextInstr gb = decodeOp $ getRegister gb PC
 
+stepGameboy :: Gameboy -> Gameboy
+stepGameboy gb = evalInstruction gb $ fetchNextInstr gb
