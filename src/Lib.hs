@@ -1,3 +1,5 @@
+-- Gameboy emulator
+
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BinaryLiterals #-}
 
@@ -9,7 +11,6 @@ import Control.Lens
 import Data.Vector
 import Data.Bits
 
---TODO we need to rething the structure of this.
 data EmuData =
   Eight
   {
@@ -65,7 +66,7 @@ makeLenses ''Instruction
 
 combineEmuData :: EmuData -> EmuData -> EmuData
 combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ shiftL d1 8 .&. fromIntegral d2
---TODO non exhaustive patterns.
+--TODO non exhaustive
 
 breakHiEnum :: EmuData -> EmuData
 breakHiEnum (Sixteen d) = Eight . fromIntegral $ shiftR d 8
@@ -144,40 +145,37 @@ isReg16 SP = True
 isReg16 PC = True
 isReg16 _  = False
 
-ld :: (EmuData -> Gameboy) -> EmuData -> Gameboy
-ld g d = g d
-
 ldReg :: Register -> Register -> (Gameboy -> Gameboy)
-ldReg d s = \gb -> ld (setRegister gb d) (getRegister gb s)
+ldReg d s = \gb -> setRegister gb d $ getRegister gb s
 
 ldRegMem :: Register -> EmuData -> (Gameboy -> Gameboy)
-ldRegMem reg addr = \gb -> ld (setRegister gb reg) (getMemory gb addr)
+ldRegMem reg addr = \gb -> setRegister gb reg $ getMemory gb addr
 
---TODO come up with 1a better name
+--TODO come up with a better name
 ldRegRegAddr :: Register -> (Register, Register) -> (Gameboy -> Gameboy)
-ldRegRegAddr r (h, l) = \gb -> ld (setRegister gb r) (getMemory gb $ getRegisters gb h l)
+ldRegRegAddr r (h, l) = \gb -> setRegister gb r $ getMemory gb $ getRegisters gb h l
 
 --TODO come up with a better name
 ldRegAddrReg :: (Register, Register) -> Register -> (Gameboy -> Gameboy)
-ldRegAddrReg (h, l) r = \gb -> ld (setMemory gb $ getRegisters gb h l) (getRegister gb r)
+ldRegAddrReg (h, l) r = \gb -> setMemory gb (getRegisters gb h l) (getRegister gb r)
 
 ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
-ldRegRegData (r1, r2) = (\gb -> ld (setRegister gb r2) (getMemory gb $ getRegister gb PC)) .
+ldRegRegData (r1, r2) = (\gb -> (setRegister gb r2) (getMemory gb $ getRegister gb PC)) .
                         incrementRegister PC .
-                        (\gb -> ld (setRegister gb r1) (getMemory gb $ getRegister gb PC)) .
+                        (\gb -> (setRegister gb r1) (getMemory gb $ getRegister gb PC)) .
                         incrementRegister PC
 
 ldRegData :: Register -> (Gameboy -> Gameboy)
 ldRegData r
-  | isReg16 r == False = \gb -> ld (setRegister (gb2 gb) r)
+  | isReg16 r == True = \gb -> (setRegister (gb2 gb) r)
     (combineEmuData (getMemory (gb1 gb) $
                      getRegister (gb1 gb) PC) (getMemory (gb1 gb) $
                                                getRegister (gb1 gb) PC))
-  | otherwise = \gb -> ld (setRegister (gb1 gb) r) (getMemory (gb1 gb) $ getRegister (gb1 gb) PC)
+  | otherwise = \gb -> (setRegister (gb1 gb) r) (getMemory (gb1 gb) $ getRegister (gb1 gb) PC)
     where
       gb1 = incrementRegister PC
       gb2 = incrementRegister PC . gb1
-      
+
 incrementEmuData :: EmuData -> EmuData
 incrementEmuData (Eight d)   = Eight $ d + 1
 incrementEmuData (Sixteen d) = Sixteen $ d + 1
@@ -186,6 +184,11 @@ decrementEmuData :: EmuData -> EmuData
 decrementEmuData (Eight d)   = Eight $ d - 1
 decrementEmuData (Sixteen d) = Sixteen $ d - 1
 
+addEmuData :: EmuData -> EmuData -> EmuData
+addEmuData (Eight e1) (Eight e2)     = Eight $ e1 + e2
+addEmuData (Sixteen e1) (Sixteen e2) = Sixteen $ e1 + e2
+--TODO non exhaustive
+
 isZeroEmuData :: EmuData -> Bool
 isZeroEmuData (Eight d)   = d == 0b00000000
 isZeroEmuData (Sixteen d) = d == 0b0000000000000000
@@ -193,34 +196,91 @@ isZeroEmuData (Sixteen d) = d == 0b0000000000000000
 setZero :: EmuData -> (Gameboy -> Gameboy)
 setZero d = setFlag zeroFlag $ isZeroEmuData d
 
+--TODO check logic
 setCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
 setCarry (Eight e1) (Eight e2) = setFlag zeroFlag (e1 < e2)
 setCarry (Sixteen e1) (Sixteen e2) = setFlag zeroFlag (e1 < e2)
 
+--TODO check logic
 setHalfCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
 setHalfCarry (Eight e1) (Eight e2) =  setFlag halfCarryFlag ((e1 .&. 0b00001111) < (e2 .&. 0b00001111))
 setHalfCarry (Sixteen e1) (Sixteen e2) =  setFlag halfCarryFlag
   ((e1 .&. 0b0000111111111111) < (e2 .&. 0b0000111111111111))
 
-incrementRegister :: Register -> (Gameboy -> Gameboy)
-incrementRegister r = (\gb -> (setRegister gb r) (increment gb)) .
-                      carry .
-                      halfCarry .
-                      subtractf .
-                      zero
-  where
-    increment = \gb -> incrementEmuData $ getRegister gb r
-    zero      = \gb -> (setZero $ increment gb) gb
-    carry     = \gb -> setCarry (increment gb) (getRegister gb r) gb
-    halfCarry = \gb -> setHalfCarry (increment gb) (getRegister gb r) gb
+incrementWithFlags :: EmuData -> (EmuData -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
+incrementWithFlags d f = f increment .
+                         halfCarry .
+                         subtractf .
+                         zero
+    where
+    increment = incrementEmuData d
+    zero      = \gb -> setZero increment gb
+    halfCarry = \gb -> setHalfCarry increment d gb
     subtractf = \gb -> setFlag subtractFlag False gb
 
+incrementRegister :: Register -> (Gameboy -> Gameboy)
+incrementRegister r = \gb -> incrementWithFlags (getRegister gb r) (\d -> (\gb1 -> (setRegister gb1 r d))) gb
 
+incrementRegisters :: (Register, Register) -> (Gameboy -> Gameboy)
+incrementRegisters (r1, r2) = \gb -> incrementWithFlags (getRegisters gb r1 r2) (\d -> (\gb1 -> (setRegisters gb1 r1 r2 d))) gb
+
+decrementWithFlags :: EmuData -> (EmuData -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
+decrementWithFlags d f = f decrement .
+                         zero .
+                         halfCarry .
+                         subtractf
+  where
+    decrement = decrementEmuData d
+    zero      = \gb -> setZero decrement gb
+    halfCarry = \gb -> setHalfCarry decrement d gb
+    subtractf = \gb -> setFlag subtractFlag True gb
+
+decrementRegister :: Register -> (Gameboy -> Gameboy)
+decrementRegister r = \gb -> decrementWithFlags (getRegister gb r) (\d -> (\gb1 -> setRegister gb1 r d)) gb
+
+decrementRegisters :: (Register, Register) -> (Gameboy -> Gameboy)
+decrementRegisters (r1, r2) = \gb -> decrementWithFlags (getRegisters gb r1 r2) (\d -> (\gb1 -> setRegisters gb1 r1 r2 d)) gb
+
+incrementRegisterWithoutFlags :: Register -> (Gameboy -> Gameboy)
+incrementRegisterWithoutFlags r = \gb -> setRegister gb r $ incrementEmuData $ getRegister gb r
+
+incrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
+incrementRegistersWithoutFlags (r1, r2) = \gb -> setRegisters gb r1 r2 $ incrementEmuData $ getRegisters gb r1 r2
+
+decrementRegisterWithoutFlags :: Register -> (Gameboy -> Gameboy)
+decrementRegisterWithoutFlags r = \gb -> setRegister gb r $ incrementEmuData $ getRegister gb r
+
+decrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
+decrementRegistersWithoutFlags (r1, r2) = \gb -> setRegisters gb r1 r2 $ decrementEmuData $ getRegisters gb r1 r2
+
+addWithFlags :: EmuData -> EmuData -> (EmuData -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
+addWithFlags e1 e2 f = f addition .
+                       carry .
+                       halfCarry .
+                       subtractf
+  where
+    addition  = addEmuData e1 e2
+    carry     = \gb -> setCarry addition e2 gb
+    halfCarry = \gb -> setHalfCarry addition e2 gb
+    subtractf = \gb -> setFlag subtractFlag False gb
+
+addRegReg :: Register -> Register -> (Gameboy -> Gameboy)
+addRegReg r1 r2 = \gb -> addWithFlags (getRegister gb r1) (getRegister gb r2) (\d -> (\gb1 -> setRegister gb1 r1 d)) gb
+
+addRegRegWithoutFlags :: Register -> Register -> (Gameboy -> Gameboy)
+addRegRegWithoutFlags r1 r2 = \gb -> setRegister gb r1 $ addEmuData (getRegister gb r1) (getRegister gb r2)
+
+addRegsRegs :: (Register, Register) -> (Register, Register) -> (Gameboy -> Gameboy)
+addRegsRegs (r1,r2) (r3, r4) = \gb -> addWithFlags (getRegisters gb r1 r2) (getRegisters gb r3 r4) (\d -> (\gb1 -> setRegisters gb1 r1 r2 d)) gb
+
+addRegsRegsWithoutFlags :: (Register, Register) -> (Register, Register) -> (Gameboy -> Gameboy)
+addRegsRegsWithoutFlags (r1, r2) (r3, r4) = \gb -> setRegisters gb r1 r2 $ addEmuData (getRegisters gb r1 r2) (getRegisters gb r3 r4)
 
 setFlag :: Word8 -> Bool -> Gameboy -> Gameboy
 setFlag w True  gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .|. w
 setFlag w False gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .&. complement w
 
+--NOTE pretty much just adds EmuData to A.
 accumAdd :: EmuData -> (Gameboy -> Gameboy)
 accumAdd (Eight byte) = (\gb -> (setRegister gb A (addition gb))) .
                    zero .
@@ -239,11 +299,29 @@ addReg r = \gb -> accumAdd (getRegister gb r) gb
 
 decodeOp :: EmuData-> Instruction
 decodeOp (Eight 0x00) = Instruction (Eight 0x00) "NOP" id
---TODO 0x01 "LD BC, d16"
+decodeOp (Eight 0x01) = Instruction (Eight 0x01) "LD BC, d16" (ldRegRegData (B, C))
 decodeOp (Eight 0x02) = Instruction (Eight 0x02) "LD (BC), A" (ldRegAddrReg (B, C) A)
---TODO 0x03 "INC BC"
+decodeOp (Eight 0x03) = Instruction (Eight 0x03) "INC BC" (incrementRegistersWithoutFlags (B, C))
 decodeOp (Eight 0x04) = Instruction (Eight 0x04) "INC B" (incrementRegister B)
---TODO 0x05-0x3F
+decodeOp (Eight 0x05) = Instruction (Eight 0x05) "DEC B" (decrementRegister B)
+decodeOp (Eight 0x06) = Instruction (Eight 0x06) "LD B, d8" (ldRegData B)
+--TODO 0x07 "RLCA"
+--TODO 0x08
+--TODO 0x09
+decodeOp (Eight 0x0A) = Instruction (Eight 0x0A) "LD A, (BC)" (ldRegRegAddr A (B, C))
+decodeOp (Eight 0x0B) = Instruction (Eight 0x0B) "DEC BC" (decrementRegistersWithoutFlags (B, C))
+decodeOp (Eight 0x0C) = Instruction (Eight 0x0C) "INC C" (incrementRegister C)
+decodeOp (Eight 0x0D) = Instruction (Eight 0x0D) "DEC C" (decrementRegister C)
+decodeOp (Eight 0x0E) = Instruction (Eight 0x0E) "LD C, d8" (ldRegData C)
+--TODO 0x0F
+--TODO 0x10
+decodeOp (Eight 0x11) = Instruction (Eight 0x11) "LD DE, d16" (ldRegRegData (D, E))
+decodeOp (Eight 0x12) = Instruction (Eight 0x12) "LD (DE), A" (ldRegAddrReg (D, E) A)
+decodeOp (Eight 0x13) = Instruction (Eight 0x13) "INC DE" (incrementRegistersWithoutFlags (D, E))
+decodeOp (Eight 0x14) = Instruction (Eight 0x14) "INC D" (incrementRegister D)
+decodeOp (Eight 0x15) = Instruction (Eight 0x15) "DEC D" (decrementRegister D)
+decodeOp (Eight 0x16) = Instruction (Eight 0x16) "LD D, d8" (ldRegData D)
+--TODO 0x17 - 0x3F
 decodeOp (Eight 0x40) = Instruction (Eight 0x40) "ld B, B" id
 decodeOp (Eight 0x41) = Instruction (Eight 0x41) "ld B, C" (ldReg B C)
 decodeOp (Eight 0x42) = Instruction (Eight 0x42) "ld B, D" (ldReg B D)
@@ -316,10 +394,10 @@ decodeOp (Eight 0x84) = Instruction (Eight 0x84) "ADD A, H" (addReg H)
 decodeOp (Eight 0x85) = Instruction (Eight 0x85) "ADD A, L" (addReg L)
 --TODO 0x86 "ADD A, (HL)"
 decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" (addReg A)
+--TODO 0x88 - 0xFF
+
 
 evalInstruction :: Gameboy -> Instruction -> Gameboy
 evalInstruction gb inst = gb & inst ^. operation
-
-data GameboyState f = GameboyState (Gameboy -> Gameboy)
 
 
