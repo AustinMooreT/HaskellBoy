@@ -1,5 +1,3 @@
--- Gameboy emulator
-
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BinaryLiterals #-}
 
@@ -10,7 +8,6 @@ import Data.Word
 import Control.Lens
 import Data.Vector
 import Data.Bits
-
 
 
 data EmuData =
@@ -69,6 +66,12 @@ halfCarryFlag = 0b00100000
 
 carryFlag :: Word8
 carryFlag = 0b00010000
+
+flagToInt :: Word8 -> Int
+flagToInt zeroFlag      = 7
+flagToInt subtractFlag  = 6
+flagToInt halfCarryFlag = 5
+flagToInt carryFlag     = 4
 
 registerToFunc :: Register -> (Cpu -> EmuData)
 registerToFunc A  = _registerA
@@ -173,6 +176,11 @@ ldRegRegAddr r (h, l) = \gb -> setRegister gb r $ getMemory gb $ getRegisters gb
 ldRegAddrReg :: (Register, Register) -> Register -> (Gameboy -> Gameboy)
 ldRegAddrReg (h, l) r = \gb -> setMemory gb (getRegisters gb h l) (getRegister gb r)
 
+ldRegAddrData :: (Register, Register) -> (Gameboy -> Gameboy)
+ldRegAddrData (r1, r2) gb = setMemory gb1 (getRegisters gb r1 r2) (getMemory gb1 $ getRegister gb1 PC)
+  where
+    gb1 = incrementRegister PC gb
+
 ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
 ldRegRegData (r1, r2) = (\gb -> (setRegister gb r2) (getMemory gb $ getRegister gb PC)) .
                         incrementRegister PC .
@@ -267,6 +275,22 @@ decrementRegisterWithoutFlags r = \gb -> setRegister gb r $ incrementEmuData $ g
 decrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
 decrementRegistersWithoutFlags (r1, r2) = \gb -> setRegisters gb r1 r2 $ decrementEmuData $ getRegisters gb r1 r2
 
+incrementMemoryReg :: Register -> (Gameboy -> Gameboy)
+incrementMemoryReg r = \gb -> incrementWithFlags (getMemory gb $ getRegister gb r)
+                              (\d -> (\gb1 -> setMemory gb1 (getRegister gb1 r) d)) gb
+
+incrementMemoryRegReg :: (Register, Register) -> (Gameboy -> Gameboy)
+incrementMemoryRegReg (r1, r2) = \gb -> incrementWithFlags (getMemory gb $ getRegisters gb r1 r2)
+                                        (\d -> (\gb1 -> setMemory gb1 (getRegisters gb1 r1 r2) d)) gb
+
+decrementMemoryReg :: Register -> (Gameboy -> Gameboy)
+decrementMemoryReg r = \gb -> decrementWithFlags (getMemory gb $ getRegister gb r)
+                              (\d -> (\gb1 -> setMemory gb1 (getRegister gb1 r) d)) gb
+
+decrementMemoryRegReg :: (Register, Register) -> (Gameboy -> Gameboy)
+decrementMemoryRegReg (r1, r2) = \gb -> decrementWithFlags (getMemory gb $ getRegisters gb r1 r2)
+                                        (\d -> (\gb1 -> setMemory gb1 (getRegisters gb1 r1 r2) d)) gb
+
 addWithFlags :: EmuData -> EmuData -> (EmuData -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
 addWithFlags e1 e2 f = f addition .
                        carry .
@@ -290,13 +314,20 @@ addRegsRegs (r1,r2) (r3, r4) = \gb -> addWithFlags (getRegisters gb r1 r2) (getR
 addRegsRegsWithoutFlags :: (Register, Register) -> (Register, Register) -> (Gameboy -> Gameboy)
 addRegsRegsWithoutFlags (r1, r2) (r3, r4) = \gb -> setRegisters gb r1 r2 $ addEmuData (getRegisters gb r1 r2) (getRegisters gb r3 r4)
 
+
+
 setFlag :: Word8 -> Bool -> Gameboy -> Gameboy
 setFlag w True  gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .|. w
 setFlag w False gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .&. complement w
 
+getFlag :: Gameboy -> Word8 -> Bool
+getFlag gb w = testBit (_eight $ getRegister gb F) (flagToInt w)
+
+
+
 --NOTE pretty much just adds EmuData to A.
 accumAdd :: EmuData -> (Gameboy -> Gameboy)
-accumAdd (Eight byte) = (\gb -> (setRegister gb A (addition gb))) .
+accumAdd (Eight byte) = (\gb -> setRegister gb A $ addition gb) .
                    zero .
                    carry .
                    subtractf .
@@ -308,18 +339,61 @@ accumAdd (Eight byte) = (\gb -> (setRegister gb A (addition gb))) .
     halfCarry = \gb -> setHalfCarry (addition  gb) (getRegister gb A) gb
     subtractf = \gb -> setFlag subtractFlag False gb
 
+accumAddCarry :: EmuData -> (Gameboy -> Gameboy)
+accumAddCarry (Eight byte) = (\gb -> setRegister gb A $ addition gb) .
+                             zero .
+                             carry .
+                             subtractf .
+                             halfCarry
+  where
+    addition = \gb -> Eight $ (xor byte . _eight $ getRegister gb A) + ((_eight $ getRegister gb F) .&. 0b0000001)
+    zero      = \gb -> (setZero $ addition gb) gb
+    carry     = \gb -> setCarry (addition gb) (Eight byte) gb
+    halfCarry = \gb -> setHalfCarry (addition  gb) (getRegister gb A) gb
+    subtractf = \gb -> setFlag subtractFlag False gb
+
 addReg :: Register -> (Gameboy -> Gameboy)
 addReg r = \gb -> accumAdd (getRegister gb r) gb
 
+rotateLeftACarry :: (Gameboy -> Gameboy)
+rotateLeftACarry = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) .
+                   (\gb -> setFlag carryFlag (testBit (_eight $ getRegister gb A) 0) gb) .
+                   (\gb -> setRegister gb A $ Eight $ rotateL (_eight $ getRegister gb A) 1)
+
+rotateLeftA :: Gameboy -> Gameboy
+rotateLeftA gb = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) $
+                 (\gb1 -> setRegister gb1 A $ Eight $ ((_eight $ getRegister gb1 A) .&. 0b11111110) .|. carryBeforeMask) $
+                 setFlag carryFlag carryAfter $
+                 setRegister gb A $ Eight $ rotateL (_eight $ getRegister gb A) 1
+  where
+    carryBefore = getFlag gb carryFlag
+    carryAfter  = testBit (_eight $ getRegister gb A) 7
+    carryBeforeMask = if carryBefore then 0b00000001 else 0b00000000
+
+rotateRightA :: Gameboy -> Gameboy
+rotateRightA gb = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) $
+                  (\gb1 -> setRegister gb1 A $ Eight $ ((_eight $ getRegister gb1 A) .&. 0b11111110) .|. carryBeforeMask) $
+                  setFlag carryFlag carryAfter $
+                  setRegister gb A $ Eight $ rotateR (_eight $ getRegister gb A) 1
+  where
+    carryBefore = getFlag gb carryFlag
+    carryAfter  = testBit (_eight $ getRegister gb A) 0
+    carryBeforeMask = if carryBefore then 0b10000000 else 0b00000000
+
+rotateRightACarry :: (Gameboy -> Gameboy)
+rotateRightACarry = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) .
+                    (\gb -> setFlag carryFlag (testBit (_eight $ getRegister gb A) 7) gb) .
+                    (\gb -> setRegister gb A $ Eight $ rotateR (_eight $ getRegister gb A) 1)
+
 decodeOp :: EmuData-> Instruction
 decodeOp (Eight 0x00) = Instruction (Eight 0x00) "NOP" id
-decodeOp (Eight 0x01) = Instruction (Eight 0x01) "LD BC, d16" (ldRegRegData (B, C))
-decodeOp (Eight 0x02) = Instruction (Eight 0x02) "LD (BC), A" (ldRegAddrReg (B, C) A)
-decodeOp (Eight 0x03) = Instruction (Eight 0x03) "INC BC" (incrementRegistersWithoutFlags (B, C))
-decodeOp (Eight 0x04) = Instruction (Eight 0x04) "INC B" (incrementRegister B)
-decodeOp (Eight 0x05) = Instruction (Eight 0x05) "DEC B" (decrementRegister B)
-decodeOp (Eight 0x06) = Instruction (Eight 0x06) "LD B, d8" (ldRegData B)
---TODO 0x07 "RLCA"
+decodeOp (Eight 0x01) = Instruction (Eight 0x01) "LD BC, d16" $ ldRegRegData (B, C)
+decodeOp (Eight 0x02) = Instruction (Eight 0x02) "LD (BC), A" $ ldRegAddrReg (B, C) A
+decodeOp (Eight 0x03) = Instruction (Eight 0x03) "INC BC" $ incrementRegistersWithoutFlags (B, C)
+decodeOp (Eight 0x04) = Instruction (Eight 0x04) "INC B" $ incrementRegister B
+decodeOp (Eight 0x05) = Instruction (Eight 0x05) "DEC B" $ decrementRegister B
+decodeOp (Eight 0x06) = Instruction (Eight 0x06) "LD B, d8" $ ldRegData B
+decodeOp (Eight 0x07) = Instruction (Eight 0x07) "RLCA" rotateLeftACarry
 --TODO 0x08 "LD (a16) SP"
 decodeOp (Eight 0x09) = Instruction (Eight 0x09) "ADD HL, BC" (addRegsRegs (H, L) (B, C))
 decodeOp (Eight 0x0A) = Instruction (Eight 0x0A) "LD A, (BC)" (ldRegRegAddr A (B, C))
@@ -327,127 +401,127 @@ decodeOp (Eight 0x0B) = Instruction (Eight 0x0B) "DEC BC" (decrementRegistersWit
 decodeOp (Eight 0x0C) = Instruction (Eight 0x0C) "INC C" (incrementRegister C)
 decodeOp (Eight 0x0D) = Instruction (Eight 0x0D) "DEC C" (decrementRegister C)
 decodeOp (Eight 0x0E) = Instruction (Eight 0x0E) "LD C, d8" (ldRegData C)
---TODO 0x0F "RRCA"
+decodeOp (Eight 0x0F) = Instruction (Eight 0x0F) "RRCA" rotateRightACarry
 --TODO 0x10 "STOP 0"
-decodeOp (Eight 0x11) = Instruction (Eight 0x11) "LD DE, d16" (ldRegRegData (D, E))
-decodeOp (Eight 0x12) = Instruction (Eight 0x12) "LD (DE), A" (ldRegAddrReg (D, E) A)
-decodeOp (Eight 0x13) = Instruction (Eight 0x13) "INC DE" (incrementRegistersWithoutFlags (D, E))
-decodeOp (Eight 0x14) = Instruction (Eight 0x14) "INC D" (incrementRegister D)
-decodeOp (Eight 0x15) = Instruction (Eight 0x15) "DEC D" (decrementRegister D)
-decodeOp (Eight 0x16) = Instruction (Eight 0x16) "LD D, d8" (ldRegData D)
---TODO 0x17 "RLA"
+decodeOp (Eight 0x11) = Instruction (Eight 0x11) "LD DE, d16" $ ldRegRegData (D, E)
+decodeOp (Eight 0x12) = Instruction (Eight 0x12) "LD (DE), A" $ ldRegAddrReg (D, E) A
+decodeOp (Eight 0x13) = Instruction (Eight 0x13) "INC DE" $ incrementRegistersWithoutFlags (D, E)
+decodeOp (Eight 0x14) = Instruction (Eight 0x14) "INC D" $ incrementRegister D
+decodeOp (Eight 0x15) = Instruction (Eight 0x15) "DEC D" $ decrementRegister D
+decodeOp (Eight 0x16) = Instruction (Eight 0x16) "LD D, d8" $ ldRegData D
+decodeOp (Eight 0x17) = Instruction (Eight 0x17) "RLA" rotateLeftA
 --TODO 0x18 "JR r8"
-decodeOp (Eight 0x19) = Instruction (Eight 0x19) "ADD HL, DE" (addRegsRegs (H, L) (D, E))
-decodeOp (Eight 0x1A) = Instruction (Eight 0x1A) "LD A, (DE)" (ldRegRegAddr A (D, E))
-decodeOp (Eight 0x1B) = Instruction (Eight 0x1B) "DEC BC" (decrementRegistersWithoutFlags (D, E))
-decodeOp (Eight 0x1C) = Instruction (Eight 0x1C) "INC E" (incrementRegister E)
-decodeOp (Eight 0x1D) = Instruction (Eight 0x1D) "DEC E" (decrementRegister E)
-decodeOp (Eight 0x1E) = Instruction (Eight 0x1E) "LD C, d8" (ldRegData C)
---TODO 0x1F "RRA"
+decodeOp (Eight 0x19) = Instruction (Eight 0x19) "ADD HL, DE" $ addRegsRegs (H, L) (D, E)
+decodeOp (Eight 0x1A) = Instruction (Eight 0x1A) "LD A, (DE)" $ ldRegRegAddr A (D, E)
+decodeOp (Eight 0x1B) = Instruction (Eight 0x1B) "DEC BC" $ decrementRegistersWithoutFlags (D, E)
+decodeOp (Eight 0x1C) = Instruction (Eight 0x1C) "INC E" $ incrementRegister E
+decodeOp (Eight 0x1D) = Instruction (Eight 0x1D) "DEC E" $ decrementRegister E
+decodeOp (Eight 0x1E) = Instruction (Eight 0x1E) "LD C, d8" $ ldRegData C
+decodeOp (Eight 0x1F) = Instruction (Eight 0x1F) "RRA" rotateRightA
 --TODO 0x20 "JR NZ, r8"
-decodeOp (Eight 0x21) = Instruction (Eight 0x21) "LD HL, d16" (ldRegRegData (H, L))
+decodeOp (Eight 0x21) = Instruction (Eight 0x21) "LD HL, d16" $ ldRegRegData (H, L)
 --TODO 0x22 "LD (HL+), A"
-decodeOp (Eight 0x23) = Instruction (Eight 0x23) "INC HL" (incrementRegistersWithoutFlags (H, L))
-decodeOp (Eight 0x24) = Instruction (Eight 0x24) "INC H" (incrementRegister H)
-decodeOp (Eight 0x25) = Instruction (Eight 0x25) "DEC H" (decrementRegister H)
-decodeOp (Eight 0x28) = Instruction (Eight 0x26) "LD H, d8" (ldRegData H)
+decodeOp (Eight 0x23) = Instruction (Eight 0x23) "INC HL" $ incrementRegistersWithoutFlags (H, L)
+decodeOp (Eight 0x24) = Instruction (Eight 0x24) "INC H" $ incrementRegister H
+decodeOp (Eight 0x25) = Instruction (Eight 0x25) "DEC H" $ decrementRegister H
+decodeOp (Eight 0x28) = Instruction (Eight 0x26) "LD H, d8" $ ldRegData H
 --TODO 0x27 "DAA"
 --TODO 0x28 "JR Z, r8"
-decodeOp (Eight 0x29) = Instruction (Eight 0x29) "ADD HL, HL" (addRegsRegs (H, L) (H, L))
+decodeOp (Eight 0x29) = Instruction (Eight 0x29) "ADD HL, HL" $ addRegsRegs (H, L) (H, L)
 --TODO 0x2A "LD A, (HL+)"
-decodeOp (Eight 0x2B) = Instruction (Eight 0x2B) "DEC HL" (decrementRegistersWithoutFlags (H, L))
-decodeOp (Eight 0x2C) = Instruction (Eight 0x2C) "INC L" (incrementRegister L)
-decodeOp (Eight 0x2D) = Instruction (Eight 0x2D) "DEC L" (decrementRegister L)
-decodeOp (Eight 0x2E) = Instruction (Eight 0x2E) "LD L, d8" (ldRegData L)
+decodeOp (Eight 0x2B) = Instruction (Eight 0x2B) "DEC HL" $ decrementRegistersWithoutFlags (H, L)
+decodeOp (Eight 0x2C) = Instruction (Eight 0x2C) "INC L" $ incrementRegister L
+decodeOp (Eight 0x2D) = Instruction (Eight 0x2D) "DEC L" $ decrementRegister L
+decodeOp (Eight 0x2E) = Instruction (Eight 0x2E) "LD L, d8" $ ldRegData L
 --TODO 0x2F "CPL"
 --TODO 0x30 "JR NC, r8"
-decodeOp (Eight 0x31) = Instruction (Eight 0x31) "LD SP, d16" (ldRegData SP)
+decodeOp (Eight 0x31) = Instruction (Eight 0x31) "LD SP, d16" $ ldRegData SP
 --TODO 0x32 "LD (HL-), A"
-decodeOp (Eight 0x33) = Instruction (Eight 0x33) "INC SP" (incrementRegisterWithoutFlags SP)
---TODO 0x34 "INC (HL)"
---TODO 0x35 "DEC (HL)"
---TODO 0x36 "LD (HL), d8"
+decodeOp (Eight 0x33) = Instruction (Eight 0x33) "INC SP" $ incrementRegisterWithoutFlags SP
+decodeOp (Eight 0x34) = Instruction (Eight 0x34) "INC (HL)" $ incrementMemoryRegReg (H, L)
+decodeOp (Eight 0x35) = Instruction (Eight 0x35) "DEC (HL)" $ decrementMemoryRegReg (H, L)
+decodeOp (Eight 0x36) = Instruction (Eight 0x36) "LD (HL), d8" $ ldRegAddrData (H, L)
 --TODO 0x37 "SCF"
 --TODO 0x38 "JR C, r8"
 --TODO 0x39 "ADD HL, SP"
 --TODO 0x3A "LD A, (HL-)"
-decodeOp (Eight 0x3B) = Instruction (Eight 0x3B) "DEC SP" (decrementRegisterWithoutFlags SP)
-decodeOp (Eight 0x3C) = Instruction (Eight 0x3C) "INC A" (incrementRegister A)
-decodeOp (Eight 0x3D) = Instruction (Eight 0x3D) "DEC A" (decrementRegister A)
-decodeOp (Eight 0x3E) = Instruction (Eight 0x3E) "LD A, d8" (ldRegData A)
+decodeOp (Eight 0x3B) = Instruction (Eight 0x3B) "DEC SP" $ decrementRegisterWithoutFlags SP
+decodeOp (Eight 0x3C) = Instruction (Eight 0x3C) "INC A" $ incrementRegister A
+decodeOp (Eight 0x3D) = Instruction (Eight 0x3D) "DEC A" $ decrementRegister A
+decodeOp (Eight 0x3E) = Instruction (Eight 0x3E) "LD A, d8" $ ldRegData A
 --TODO 0x3F "CCF"
-decodeOp (Eight 0x40) = Instruction (Eight 0x40) "ld B, B" id
-decodeOp (Eight 0x41) = Instruction (Eight 0x41) "ld B, C" (ldReg B C)
-decodeOp (Eight 0x42) = Instruction (Eight 0x42) "ld B, D" (ldReg B D)
-decodeOp (Eight 0x43) = Instruction (Eight 0x43) "ld B, E" (ldReg B E)
-decodeOp (Eight 0x44) = Instruction (Eight 0x44) "ld B, H" (ldReg B H)
-decodeOp (Eight 0x45) = Instruction (Eight 0x45) "ld B, L" (ldReg B L)
-decodeOp (Eight 0x46) = Instruction (Eight 0x46) "ld B, (HL)" (ldRegRegAddr B (H, L))
-decodeOp (Eight 0x47) = Instruction (Eight 0x46) "ld B, A" (ldReg B A)
-decodeOp (Eight 0x48) = Instruction (Eight 0x48) "ld C, B" (ldReg C B)
-decodeOp (Eight 0x49) = Instruction (Eight 0x49) "ld C, C" id
-decodeOp (Eight 0x4A) = Instruction (Eight 0x4A) "ld C, D" (ldReg C D)
-decodeOp (Eight 0x4B) = Instruction (Eight 0x4B) "ld C, E" (ldReg C E)
-decodeOp (Eight 0x4C) = Instruction (Eight 0x4C) "ld C, H" (ldReg C H)
-decodeOp (Eight 0x4D) = Instruction (Eight 0x4D) "ld C, L" (ldReg C L)
-decodeOp (Eight 0x4E) = Instruction (Eight 0x4E) "ld C, (HL)" (ldRegRegAddr C (H, L))
-decodeOp (Eight 0x4F) = Instruction (Eight 0x4F) "ld C, A" (ldReg C A)
-decodeOp (Eight 0x50) = Instruction (Eight 0x50) "ld D, B" (ldReg D B)
-decodeOp (Eight 0x51) = Instruction (Eight 0x51) "ld D, C" (ldReg D C)
-decodeOp (Eight 0x52) = Instruction (Eight 0x52) "ld D, D" id
-decodeOp (Eight 0x53) = Instruction (Eight 0x53) "ld D, E" (ldReg D E)
-decodeOp (Eight 0x54) = Instruction (Eight 0x54) "ld D, H" (ldReg D H)
-decodeOp (Eight 0x55) = Instruction (Eight 0x55) "ld D, L" (ldReg D L)
-decodeOp (Eight 0x56) = Instruction (Eight 0x56) "ld D, (HL)" (ldRegRegAddr D (H, L))
-decodeOp (Eight 0x57) = Instruction (Eight 0x57) "ld D, A" (ldReg D A)
-decodeOp (Eight 0x58) = Instruction (Eight 0x58) "ld E, B" (ldReg E B)
-decodeOp (Eight 0x59) = Instruction (Eight 0x59) "ld E, C" (ldReg E C)
-decodeOp (Eight 0x5A) = Instruction (Eight 0x5A) "ld E, D" (ldReg E D)
-decodeOp (Eight 0x5B) = Instruction (Eight 0x5B) "ld E, E" id
-decodeOp (Eight 0x5C) = Instruction (Eight 0x5C) "ld E, H" (ldReg E H)
-decodeOp (Eight 0x5D) = Instruction (Eight 0x5D) "ld E, L" (ldReg E L)
-decodeOp (Eight 0x5E) = Instruction (Eight 0x5E) "ld E, (HL)" (ldRegRegAddr E (H, L))
-decodeOp (Eight 0x5F) = Instruction (Eight 0x5F) "ld E, A" (ldReg E A)
-decodeOp (Eight 0x60) = Instruction (Eight 0x60) "ld H, B" (ldReg H B)
-decodeOp (Eight 0x61) = Instruction (Eight 0x61) "ld H, C" (ldReg H C)
-decodeOp (Eight 0x62) = Instruction (Eight 0x62) "ld H, D" (ldReg H D)
-decodeOp (Eight 0x63) = Instruction (Eight 0x63) "ld H, E" (ldReg H E)
-decodeOp (Eight 0x64) = Instruction (Eight 0x64) "ld H, H" id
-decodeOp (Eight 0x65) = Instruction (Eight 0x65) "ld H, L" (ldReg H L)
-decodeOp (Eight 0x66) = Instruction (Eight 0x66) "ld H, (HL)" (ldRegRegAddr H (H, L))
-decodeOp (Eight 0x67) = Instruction (Eight 0x67) "ld H, A" (ldReg H A)
-decodeOp (Eight 0x68) = Instruction (Eight 0x68) "ld L, B" (ldReg L B)
-decodeOp (Eight 0x69) = Instruction (Eight 0x69) "ld L, C" (ldReg L C)
-decodeOp (Eight 0x6A) = Instruction (Eight 0x6A) "ld L, D" (ldReg L D)
-decodeOp (Eight 0x6B) = Instruction (Eight 0x6B) "ld L, E" (ldReg L E)
-decodeOp (Eight 0x6C) = Instruction (Eight 0x6C) "ld L, H" (ldReg L H)
-decodeOp (Eight 0x6D) = Instruction (Eight 0x6D) "ld L, L" id
-decodeOp (Eight 0x6E) = Instruction (Eight 0x6E) "ld L, (HL)" (ldRegRegAddr L (H, L))
-decodeOp (Eight 0x6F) = Instruction (Eight 0x6F) "ld L, A" (ldReg L A)
-decodeOp (Eight 0x70) = Instruction (Eight 0x70) "ld (HL) B" (ldRegAddrReg (H, L) B)
-decodeOp (Eight 0x71) = Instruction (Eight 0x71) "ld (HL) C" (ldRegAddrReg (H, L) C)
-decodeOp (Eight 0x72) = Instruction (Eight 0x72) "ld (HL) D" (ldRegAddrReg (H, L) D)
-decodeOp (Eight 0x73) = Instruction (Eight 0x73) "ld (HL) E" (ldRegAddrReg (H, L) E)
-decodeOp (Eight 0x74) = Instruction (Eight 0x74) "ld (HL) H" (ldRegAddrReg (H, L) H)
-decodeOp (Eight 0x75) = Instruction (Eight 0x75) "ld (HL) L" (ldRegAddrReg (H, L) L)
+decodeOp (Eight 0x40) = Instruction (Eight 0x40) "LD B, B" id
+decodeOp (Eight 0x41) = Instruction (Eight 0x41) "LD B, C" $ ldReg B C
+decodeOp (Eight 0x42) = Instruction (Eight 0x42) "LD B, D" $ ldReg B D
+decodeOp (Eight 0x43) = Instruction (Eight 0x43) "LD B, E" $ ldReg B E
+decodeOp (Eight 0x44) = Instruction (Eight 0x44) "LD B, H" $ ldReg B H
+decodeOp (Eight 0x45) = Instruction (Eight 0x45) "LD B, L" $ ldReg B L
+decodeOp (Eight 0x46) = Instruction (Eight 0x46) "LD B, (HL)" $ ldRegRegAddr B (H, L)
+decodeOp (Eight 0x47) = Instruction (Eight 0x46) "LD B, A" $ ldReg B A
+decodeOp (Eight 0x48) = Instruction (Eight 0x48) "LD C, B" $ ldReg C B
+decodeOp (Eight 0x49) = Instruction (Eight 0x49) "LD C, C" id
+decodeOp (Eight 0x4A) = Instruction (Eight 0x4A) "LD C, D" $ ldReg C D
+decodeOp (Eight 0x4B) = Instruction (Eight 0x4B) "LD C, E" $ ldReg C E
+decodeOp (Eight 0x4C) = Instruction (Eight 0x4C) "LD C, H" $ ldReg C H
+decodeOp (Eight 0x4D) = Instruction (Eight 0x4D) "LD C, L" $ ldReg C L
+decodeOp (Eight 0x4E) = Instruction (Eight 0x4E) "LD C, (HL)" $ ldRegRegAddr C (H, L)
+decodeOp (Eight 0x4F) = Instruction (Eight 0x4F) "LD C, A" $ ldReg C A
+decodeOp (Eight 0x50) = Instruction (Eight 0x50) "LD D, B" $ ldReg D B
+decodeOp (Eight 0x51) = Instruction (Eight 0x51) "LD D, C" $ ldReg D C
+decodeOp (Eight 0x52) = Instruction (Eight 0x52) "LD D, D" id
+decodeOp (Eight 0x53) = Instruction (Eight 0x53) "LD D, E" $ ldReg D E
+decodeOp (Eight 0x54) = Instruction (Eight 0x54) "LD D, H" $ ldReg D H
+decodeOp (Eight 0x55) = Instruction (Eight 0x55) "LD D, L" $ ldReg D L
+decodeOp (Eight 0x56) = Instruction (Eight 0x56) "LD D, (HL)" $ ldRegRegAddr D (H, L)
+decodeOp (Eight 0x57) = Instruction (Eight 0x57) "LD D, A" $ ldReg D A
+decodeOp (Eight 0x58) = Instruction (Eight 0x58) "LD E, B" $ ldReg E B
+decodeOp (Eight 0x59) = Instruction (Eight 0x59) "LD E, C" $ ldReg E C
+decodeOp (Eight 0x5A) = Instruction (Eight 0x5A) "LD E, D" $ ldReg E D
+decodeOp (Eight 0x5B) = Instruction (Eight 0x5B) "LD E, E" id
+decodeOp (Eight 0x5C) = Instruction (Eight 0x5C) "LD E, H" $ ldReg E H
+decodeOp (Eight 0x5D) = Instruction (Eight 0x5D) "LD E, L" $ ldReg E L
+decodeOp (Eight 0x5E) = Instruction (Eight 0x5E) "LD E, (HL)" $ ldRegRegAddr E (H, L)
+decodeOp (Eight 0x5F) = Instruction (Eight 0x5F) "LD E, A" $ ldReg E A
+decodeOp (Eight 0x60) = Instruction (Eight 0x60) "LD H, B" $ ldReg H B
+decodeOp (Eight 0x61) = Instruction (Eight 0x61) "LD H, C" $ ldReg H C
+decodeOp (Eight 0x62) = Instruction (Eight 0x62) "LD H, D" $ ldReg H D
+decodeOp (Eight 0x63) = Instruction (Eight 0x63) "LD H, E" $ ldReg H E
+decodeOp (Eight 0x64) = Instruction (Eight 0x64) "LD H, H" id
+decodeOp (Eight 0x65) = Instruction (Eight 0x65) "LD H, L" $ ldReg H L
+decodeOp (Eight 0x66) = Instruction (Eight 0x66) "LD H, (HL)" $ ldRegRegAddr H (H, L)
+decodeOp (Eight 0x67) = Instruction (Eight 0x67) "LD H, A" $ ldReg H A
+decodeOp (Eight 0x68) = Instruction (Eight 0x68) "LD L, B" $ ldReg L B
+decodeOp (Eight 0x69) = Instruction (Eight 0x69) "LD L, C" $ ldReg L C
+decodeOp (Eight 0x6A) = Instruction (Eight 0x6A) "LD L, D" $ ldReg L D
+decodeOp (Eight 0x6B) = Instruction (Eight 0x6B) "LD L, E" $ ldReg L E
+decodeOp (Eight 0x6C) = Instruction (Eight 0x6C) "LD L, H" $ ldReg L H
+decodeOp (Eight 0x6D) = Instruction (Eight 0x6D) "LD L, L" id
+decodeOp (Eight 0x6E) = Instruction (Eight 0x6E) "LD L, (HL)" $ ldRegRegAddr L (H, L)
+decodeOp (Eight 0x6F) = Instruction (Eight 0x6F) "LD L, A" $ ldReg L A
+decodeOp (Eight 0x70) = Instruction (Eight 0x70) "LD (HL) B" $ ldRegAddrReg (H, L) B
+decodeOp (Eight 0x71) = Instruction (Eight 0x71) "LD (HL) C" $ ldRegAddrReg (H, L) C
+decodeOp (Eight 0x72) = Instruction (Eight 0x72) "LD (HL) D" $ ldRegAddrReg (H, L) D
+decodeOp (Eight 0x73) = Instruction (Eight 0x73) "LD (HL) E" $ ldRegAddrReg (H, L) E
+decodeOp (Eight 0x74) = Instruction (Eight 0x74) "LD (HL) H" $ ldRegAddrReg (H, L) H
+decodeOp (Eight 0x75) = Instruction (Eight 0x75) "LD (HL) L" $ ldRegAddrReg (H, L) L
 --TODO 0x76 "HALT"
-decodeOp (Eight 0x77) = Instruction (Eight 0x77) "ld (HL) A" (ldRegAddrReg (H, L) A)
-decodeOp (Eight 0x78) = Instruction (Eight 0x78) "ld A B" (ldReg A B)
-decodeOp (Eight 0x79) = Instruction (Eight 0x79) "ld A C" (ldReg A C)
-decodeOp (Eight 0x7A) = Instruction (Eight 0x7A) "ld A D" (ldReg A D)
-decodeOp (Eight 0x7B) = Instruction (Eight 0x7B) "ld A E" (ldReg A E)
-decodeOp (Eight 0x7C) = Instruction (Eight 0x7C) "ld A H" (ldReg A H)
-decodeOp (Eight 0x7D) = Instruction (Eight 0x7D) "ld A L" (ldReg A L)
-decodeOp (Eight 0x7E) = Instruction (Eight 0x7E) "ld A (HL)" (ldRegRegAddr A (H, L))
-decodeOp (Eight 0x7F) = Instruction (Eight 0x7F) "ld A A" id
-decodeOp (Eight 0x80) = Instruction (Eight 0x80) "ADD A, B" (addReg B)
-decodeOp (Eight 0x81) = Instruction (Eight 0x81) "ADD A, C" (addReg C)
-decodeOp (Eight 0x82) = Instruction (Eight 0x82) "ADD A, D" (addReg D)
-decodeOp (Eight 0x83) = Instruction (Eight 0x83) "ADD A, E" (addReg E)
-decodeOp (Eight 0x84) = Instruction (Eight 0x84) "ADD A, H" (addReg H)
-decodeOp (Eight 0x85) = Instruction (Eight 0x85) "ADD A, L" (addReg L)
+decodeOp (Eight 0x77) = Instruction (Eight 0x77) "LD (HL) A" $ ldRegAddrReg (H, L) A
+decodeOp (Eight 0x78) = Instruction (Eight 0x78) "LD A B" $ ldReg A B
+decodeOp (Eight 0x79) = Instruction (Eight 0x79) "LD A C" $ ldReg A C
+decodeOp (Eight 0x7A) = Instruction (Eight 0x7A) "LD A D" $ ldReg A D
+decodeOp (Eight 0x7B) = Instruction (Eight 0x7B) "LD A E" $ ldReg A E
+decodeOp (Eight 0x7C) = Instruction (Eight 0x7C) "LD A H" $ ldReg A H
+decodeOp (Eight 0x7D) = Instruction (Eight 0x7D) "LD A L" $ ldReg A L
+decodeOp (Eight 0x7E) = Instruction (Eight 0x7E) "LD A (HL)" $ ldRegRegAddr A (H, L)
+decodeOp (Eight 0x7F) = Instruction (Eight 0x7F) "LD A A" id
+decodeOp (Eight 0x80) = Instruction (Eight 0x80) "ADD A, B" $ addReg B
+decodeOp (Eight 0x81) = Instruction (Eight 0x81) "ADD A, C" $ addReg C
+decodeOp (Eight 0x82) = Instruction (Eight 0x82) "ADD A, D" $ addReg D
+decodeOp (Eight 0x83) = Instruction (Eight 0x83) "ADD A, E" $ addReg E
+decodeOp (Eight 0x84) = Instruction (Eight 0x84) "ADD A, H" $ addReg H
+decodeOp (Eight 0x85) = Instruction (Eight 0x85) "ADD A, L" $ addReg L
 --TODO 0x86 "ADD A, (HL)"
-decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" (addReg A)
+decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" $ addReg A
 --TODO 0x88 - 0xFF
 
 evalInstruction :: Gameboy -> Instruction -> Gameboy
