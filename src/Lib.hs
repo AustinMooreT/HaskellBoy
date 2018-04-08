@@ -6,9 +6,10 @@ module Lib
 
 import Data.Word
 import Control.Lens
-import Data.Vector
+import Data.Vector as V
 import Data.Bits
-
+import Data.Binary.Get
+import Graphics.Gloss
 
 data EmuData =
   Eight
@@ -22,6 +23,10 @@ data EmuData =
   }
 makeLenses ''EmuData
 makePrisms ''EmuData
+
+instance Show EmuData where
+  show (Eight w)   = show w
+  show (Sixteen w) = show w
 
 combineEmuData :: EmuData -> EmuData -> EmuData
 combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ shiftL d1 8 .&. fromIntegral d2
@@ -52,26 +57,39 @@ data Cpu =
     _registerPC :: EmuData
   }
 makeLenses ''Cpu
+instance Show Cpu where
+  show cpu = "A:[" Prelude.++ (show $ cpu ^. registerA) Prelude.++ "]\n" Prelude.++
+             "B:[" Prelude.++ (show $ cpu ^. registerB) Prelude.++ "]\n" Prelude.++
+             "C:[" Prelude.++ (show $ cpu ^. registerC) Prelude.++ "]\n" Prelude.++
+             "D:[" Prelude.++ (show $ cpu ^. registerD) Prelude.++ "]\n" Prelude.++
+             "E:[" Prelude.++ (show $ cpu ^. registerE) Prelude.++ "]\n" Prelude.++
+             "F:[" Prelude.++ (show $ cpu ^. registerF) Prelude.++ "]\n" Prelude.++
+             "H:[" Prelude.++ (show $ cpu ^. registerH) Prelude.++ "]\n" Prelude.++
+             "L:[" Prelude.++ (show $ cpu ^. registerL) Prelude.++ "]" Prelude.++
+             "SP:[" Prelude.++ (show $ cpu ^. registerSP) Prelude.++ "]\n" Prelude.++
+             "PC:[" Prelude.++ (show $ cpu ^. registerPC) Prelude.++ "]\n"
+
+
 
 data Register = A | B | C | D | E | F | H | L | SP | PC
 
 zeroFlag :: Word8
-zeroFlag = 0b10000000
+zeroFlag = 128
 
 subtractFlag :: Word8
-subtractFlag = 0b01000000
+subtractFlag = 64
 
 halfCarryFlag :: Word8
-halfCarryFlag = 0b00100000
+halfCarryFlag = 32
 
 carryFlag :: Word8
-carryFlag = 0b00010000
+carryFlag = 16
 
 flagToInt :: Word8 -> Int
-flagToInt zeroFlag      = 7
-flagToInt subtractFlag  = 6
-flagToInt halfCarryFlag = 5
-flagToInt carryFlag     = 4
+flagToInt 128 = 7
+flagToInt 64  = 6
+flagToInt 32  = 5
+flagToInt 16  = 4
 
 registerToFunc :: Register -> (Cpu -> EmuData)
 registerToFunc A  = _registerA
@@ -108,7 +126,7 @@ composeRegisterLenses reg1 reg2 = lens getter setter
 data Memory =
   Memory
   {
-    _bytes :: Vector Word8
+    _bytes :: V.Vector Word8
   }
 makeLenses ''Memory
 
@@ -143,6 +161,11 @@ setMemory :: Gameboy -> EmuData -> EmuData -> Gameboy
 setMemory gb (Sixteen addr) (Eight d) = over (memory . bytes) (\y -> y // [(fromIntegral addr, d)]) gb
 --TODO non exhaustive
 
+data Cartridge =
+  Cartridge
+  {
+    _data :: V.Vector Word8
+  }
 
 
 setRegister :: Gameboy -> Register -> EmuData -> Gameboy
