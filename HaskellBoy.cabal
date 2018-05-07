@@ -52,8 +52,16 @@ executable HaskellBoy-exe
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      HaskellBoy
-    , base >=4.7 && <5
+                HaskellBoy
+              , base >=4.7 && <5
+              , bytestring >= 0.10.8.1
+              , binary >= 0.8.3.0
+              , lens >= 4.16
+              , vector >= 0.1.0
+              , array >= 0.1.0
+              , bytestring >= 0.10.8.1
+              , binary >= 0.8.3.0
+              , gloss >= 1.0.0.0
   default-language: Haskell2010
 
 test-suite HaskellBoy-test
@@ -65,6 +73,14 @@ test-suite HaskellBoy-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      HaskellBoy
-    , base >=4.7 && <5
+                HaskellBoy
+              , base >=4.7 && <5
+              , bytestring >= 0.10.8.1
+              , binary >= 0.8.3.0
+              , lens >= 4.16
+              , vector >= 0.1.0
+              , array >= 0.1.0
+              , bytestring >= 0.10.8.1
+              , binary >= 0.8.3.0
+              , gloss >= 1.0.0.0
   default-language: Haskell2010

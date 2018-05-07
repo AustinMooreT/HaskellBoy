@@ -2,7 +2,8 @@
 {-# LANGUAGE BinaryLiterals #-}
 
 module Lib
-    () where
+    (defaultCpu,
+    cpuToPicture) where
 
 import Data.Word
 import Control.Lens
@@ -72,7 +73,21 @@ instance Show Cpu where
              "SP:[" Prelude.++ (show $ cpu ^. registerSP) Prelude.++ "]\n" Prelude.++
              "PC:[" Prelude.++ (show $ cpu ^. registerPC) Prelude.++ "]\n"
 
+cpuToPicture :: Cpu -> Picture
+cpuToPicture cpu = text $ show cpu
 
+defaultCpu :: Cpu
+defaultCpu = (Cpu
+             (Eight 0x01)
+             (Eight 0x00)
+             (Eight 0x13)
+             (Eight 0x00)
+             (Eight 0xD8)
+             (Eight 0xB0)
+             (Eight 0x01)
+             (Eight 0x4D)
+             (Sixteen 0xFFFE)
+             (Sixteen 0x0100))
 
 data Register = A | B | C | D | E | F | H | L | SP | PC
 
