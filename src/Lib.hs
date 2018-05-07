@@ -32,6 +32,9 @@ combineEmuData :: EmuData -> EmuData -> EmuData
 combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ shiftL d1 8 .&. fromIntegral d2
 --TODO non exhaustive
 
+combineEmuDataLittleEndian :: EmuData -> EmuData -> EmuData
+combineEmuDataLittleEndian (Eight d1) (Eight d2) = Sixteen $ (fromIntegral d1) .&. (fromIntegral $ shiftL d2 8)
+
 breakHiEnum :: EmuData -> EmuData
 breakHiEnum (Sixteen d) = Eight . fromIntegral $ shiftR d 8
 --TODO non exhaustive
@@ -152,7 +155,6 @@ data Instruction =
 makeLenses ''Instruction
 
 
-
 getMemory :: Gameboy -> EmuData -> EmuData
 getMemory gb (Sixteen addr) = Eight $ (view (memory . bytes) gb) ! (fromIntegral addr)
 --TODO non exhaustive
@@ -160,13 +162,6 @@ getMemory gb (Sixteen addr) = Eight $ (view (memory . bytes) gb) ! (fromIntegral
 setMemory :: Gameboy -> EmuData -> EmuData -> Gameboy
 setMemory gb (Sixteen addr) (Eight d) = over (memory . bytes) (\y -> y // [(fromIntegral addr, d)]) gb
 --TODO non exhaustive
-
-data Cartridge =
-  Cartridge
-  {
-    _data :: V.Vector Word8
-  }
-
 
 setRegister :: Gameboy -> Register -> EmuData -> Gameboy
 setRegister gb r d = gb & cpu . registerToLens r .~ d
@@ -213,9 +208,9 @@ ldRegRegData (r1, r2) = (\gb -> (setRegister gb r2) (getMemory gb $ getRegister 
 ldRegData :: Register -> (Gameboy -> Gameboy)
 ldRegData r
   | isReg16 r == True = \gb -> (setRegister (gb2 gb) r)
-    (combineEmuData (getMemory (gb1 gb) $
-                     getRegister (gb1 gb) PC) (getMemory (gb1 gb) $
-                                               getRegister (gb1 gb) PC))
+    (combineEmuDataLittleEndian (getMemory (gb1 gb) $
+                                 getRegister (gb1 gb) PC) (getMemory (gb1 gb) $
+                                                           getRegister (gb1 gb) PC))
   | otherwise = \gb -> (setRegister (gb1 gb) r) (getMemory (gb1 gb) $ getRegister (gb1 gb) PC)
     where
       gb1 = incrementRegister PC
@@ -546,6 +541,8 @@ decodeOp (Eight 0x85) = Instruction (Eight 0x85) "ADD A, L" $ addReg L
 --TODO 0x86 "ADD A, (HL)"
 decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" $ addReg A
 --TODO 0x88 - 0xFF
+decodeOp _ = Instruction (Eight 0x00) "Invalid OP" id
+
 
 evalInstruction :: Gameboy -> Instruction -> Gameboy
 evalInstruction gb inst = gb & inst ^. operation
@@ -554,4 +551,262 @@ fetchNextInstr :: Gameboy -> Instruction
 fetchNextInstr gb = decodeOp $ getRegister gb PC
 
 stepGameboy :: Gameboy -> Gameboy
-stepGameboy gb = evalInstruction gb $ fetchNextInstr gb
+stepGameboy gb = incrementRegisterWithoutFlags SP . evalInstruction gb $ fetchNextInstr gb
+
+loadBootRom :: Gameboy -> Gameboy
+loadBootRom gb = (\gb_ -> setMemory gb_ (Sixteen 0x00FF) (Eight 0x50)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00FE) (Eight 0xE0)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00FD) (Eight 0x01)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00FC) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00FB) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00FA) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F9) (Eight 0x86)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F8) (Eight 0xFB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F7) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F6) (Eight 0x05)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F5) (Eight 0x23)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F4) (Eight 0x86)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F3) (Eight 0x78)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F2) (Eight 0x19)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F1) (Eight 0x06)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00F0) (Eight 0xF5)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00EF) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00EE) (Eight 0x34)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00ED) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00EC) (Eight 0x7D)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00EB) (Eight 0x23)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00EA) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E9) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E8) (Eight 0xBE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E7) (Eight 0x13)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E6) (Eight 0x1A)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E5) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E4) (Eight 0xA8)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E3) (Eight 0x11)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E2) (Eight 0x01)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E1) (Eight 0x04)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00E0) (Eight 0x21)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00DF) (Eight 0x3C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00DE) (Eight 0x42)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00DD) (Eight 0xA5)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00DC) (Eight 0xB9)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00DB) (Eight 0xA5)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00DA) (Eight 0xB9)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D9) (Eight 0x42)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D8) (Eight 0x3C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D7) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D6) (Eight 0x33)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D5) (Eight 0xB9)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D4) (Eight 0xBB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D3) (Eight 0x9F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D2) (Eight 0x99)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D1) (Eight 0xDC)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00D0) (Eight 0xDD)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00CF) (Eight 0xCC)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00CE) (Eight 0xEC)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00CD) (Eight 0x0E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00CC) (Eight 0x6E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00CB) (Eight 0x63)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00CA) (Eight 0x67)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C9) (Eight 0xBB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C8) (Eight 0xBB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C7) (Eight 0x99)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C6) (Eight 0xD9)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C5) (Eight 0xDD)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C4) (Eight 0xDD)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C3) (Eight 0xE6)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C2) (Eight 0x6E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C1) (Eight 0xCC)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00C0) (Eight 0xDC)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00BF) (Eight 0x0E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00BE) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00BD) (Eight 0x89)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00BC) (Eight 0x88)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00BB) (Eight 0x1F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00BA) (Eight 0x11)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B9) (Eight 0x08)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B8) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B7) (Eight 0x0D)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B6) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B5) (Eight 0x0C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B4) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B3) (Eight 0x83)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B2) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B1) (Eight 0x73)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00B0) (Eight 0x03)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00AF) (Eight 0x0B)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00AE) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00AD) (Eight 0x0D)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00AC) (Eight 0xCC)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00AB) (Eight 0x66)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00AA) (Eight 0x66)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A9) (Eight 0xED)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A8) (Eight 0xCE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A7) (Eight 0xC9)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A6) (Eight 0x23)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A5) (Eight 0x22)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A4) (Eight 0x23)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A3) (Eight 0x22)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A2) (Eight 0xF5)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A1) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A0) (Eight 0x05)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009F) (Eight 0x17)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009E) (Eight 0x11)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009D) (Eight 0xCB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009C) (Eight 0xC1)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009B) (Eight 0x17)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009A) (Eight 0x11)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0099) (Eight 0xCB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0098) (Eight 0xC5)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0097) (Eight 0x04)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0096) (Eight 0x06)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0095) (Eight 0x4F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0094) (Eight 0xCB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0093) (Eight 0x18)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0092) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0091) (Eight 0x16)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0090) (Eight 0x4F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x008F) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x008E) (Eight 0x05)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x008D) (Eight 0xD2)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x008C) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x008B) (Eight 0x15)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x008A) (Eight 0x42)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0089) (Eight 0xE0)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0088) (Eight 0x90)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0087) (Eight 0x42)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0086) (Eight 0xF0)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0085) (Eight 0xE2)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0084) (Eight 0x87)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0083) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0082) (Eight 0x0C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0081) (Eight 0xE2)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0080) (Eight 0x7B)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x007F) (Eight 0x06)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x007E) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x007D) (Eight 0x64)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x007C) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x007B) (Eight 0xC1)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x007A) (Eight 0x1E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0079) (Eight 0x06)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0078) (Eight 0x28)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0077) (Eight 0x62)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0076) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0075) (Eight 0x83)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0074) (Eight 0x1E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0073) (Eight 0x7C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0072) (Eight 0x24)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0071) (Eight 0x13)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0070) (Eight 0x0E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x006F) (Eight 0xF2)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x006E) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x006D) (Eight 0x1D)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x006C) (Eight 0xF7)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x006B) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x006A) (Eight 0x0D)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0069) (Eight 0xFA)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0068) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0067) (Eight 0x90)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0066) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0065) (Eight 0x44)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0064) (Eight 0xF0)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0063) (Eight 0x0C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0062) (Eight 0x0E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0061) (Eight 0x02)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0060) (Eight 0x1E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x005F) (Eight 0x04)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x005E) (Eight 0x40)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x005D) (Eight 0xE0)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x005C) (Eight 0x91)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x005B) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x005A) (Eight 0x42)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0059) (Eight 0xE0)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0058) (Eight 0x57)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0057) (Eight 0x64)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0056) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0055) (Eight 0x67)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0054) (Eight 0xF3)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0053) (Eight 0x18)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0052) (Eight 0x0F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0051) (Eight 0x2E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0050) (Eight 0xF9)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x004F) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x004E) (Eight 0x0D)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x004D) (Eight 0x32)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x004C) (Eight 0x08)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x004B) (Eight 0x28)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x004A) (Eight 0x3D)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0049) (Eight 0x0C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0048) (Eight 0x0E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0047) (Eight 0x99)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0046) (Eight 0x2F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0045) (Eight 0x21)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0044) (Eight 0x99)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0043) (Eight 0x10)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0042) (Eight 0xEA)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0041) (Eight 0x19)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0040) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x003F) (Eight 0xF9)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x003E) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x003D) (Eight 0x05)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x003C) (Eight 0x23)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x003B) (Eight 0x22)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x003A) (Eight 0x13)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0039) (Eight 0x1A)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0038) (Eight 0x08)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0037) (Eight 0x06)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0036) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0035) (Eight 0xD8)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0034) (Eight 0x11)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0033) (Eight 0xF3)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0032) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0031) (Eight 0x34)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0030) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002F) (Eight 0x7B)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002E) (Eight 0x13)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002D) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002C) (Eight 0x96)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002B) (Eight 0xCD)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002A) (Eight 0x00)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0029) (Eight 0x95)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0028) (Eight 0xCD)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0027) (Eight 0x1A)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0026) (Eight 0x80)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0025) (Eight 0x10)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0024) (Eight 0x21)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0023) (Eight 0x01)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0022) (Eight 0x04)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0021) (Eight 0x11)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0020) (Eight 0x47)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001F) (Eight 0xE0)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001E) (Eight 0xFC)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001D) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001C) (Eight 0x77)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001B) (Eight 0x77)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001A) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0019) (Eight 0x32)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0018) (Eight 0xE2)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0017) (Eight 0xF3)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0016) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0015) (Eight 0x0C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0014) (Eight 0xE2)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0013) (Eight 0x32)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0012) (Eight 0x80)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0011) (Eight 0x3E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0010) (Eight 0x11)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000F) (Eight 0x0E)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000E) (Eight 0xFF)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000D) (Eight 0x26)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000C) (Eight 0x21)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000B) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000A) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0009) (Eight 0x7C)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0008) (Eight 0xCB)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0007) (Eight 0x32)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0006) (Eight 0x9F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0005) (Eight 0xFF)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0004) (Eight 0x21)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0003) (Eight 0xAF)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0002) (Eight 0xFF)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0001) (Eight 0xFE)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0000) (Eight 0x31)) $ gb
