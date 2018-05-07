@@ -30,11 +30,8 @@ instance Show EmuData where
   show (Sixteen w) = show w
 
 combineEmuData :: EmuData -> EmuData -> EmuData
-combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ shiftL d1 8 .&. fromIntegral d2
+combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ (shiftL d1 8) .|. d2
 --TODO non exhaustive
-
-combineEmuDataLittleEndian :: EmuData -> EmuData -> EmuData
-combineEmuDataLittleEndian (Eight d1) (Eight d2) = Sixteen $ (fromIntegral d1) .&. (fromIntegral $ shiftL d2 8)
 
 breakHiEnum :: EmuData -> EmuData
 breakHiEnum (Sixteen d) = Eight . fromIntegral $ shiftR d 8
@@ -69,25 +66,27 @@ instance Show Cpu where
              "E:[" Prelude.++ (show $ cpu ^. registerE) Prelude.++ "]\n" Prelude.++
              "F:[" Prelude.++ (show $ cpu ^. registerF) Prelude.++ "]\n" Prelude.++
              "H:[" Prelude.++ (show $ cpu ^. registerH) Prelude.++ "]\n" Prelude.++
-             "L:[" Prelude.++ (show $ cpu ^. registerL) Prelude.++ "]" Prelude.++
+             "L:[" Prelude.++ (show $ cpu ^. registerL) Prelude.++ "]\n" Prelude.++
              "SP:[" Prelude.++ (show $ cpu ^. registerSP) Prelude.++ "]\n" Prelude.++
              "PC:[" Prelude.++ (show $ cpu ^. registerPC) Prelude.++ "]\n"
 
 cpuToPicture :: Cpu -> Picture
 cpuToPicture cpu = text $ show cpu
 
+
+
 defaultCpu :: Cpu
 defaultCpu = (Cpu
-             (Eight 0x01)
              (Eight 0x00)
-             (Eight 0x13)
              (Eight 0x00)
-             (Eight 0xD8)
-             (Eight 0xB0)
-             (Eight 0x01)
-             (Eight 0x4D)
-             (Sixteen 0xFFFE)
-             (Sixteen 0x0100))
+             (Eight 0x00)
+             (Eight 0x00)
+             (Eight 0x00)
+             (Eight 0x00)
+             (Eight 0x00)
+             (Eight 0x00)
+             (Sixteen 0x0000)
+             (Sixteen 0x0000))
 
 data Register = A | B | C | D | E | F | H | L | SP | PC
 
@@ -148,6 +147,8 @@ data Memory =
   }
 makeLenses ''Memory
 
+defaultMemory :: Memory
+defaultMemory = Memory $ V.replicate 0xFFFF 0x00
 
 
 data Gameboy =
@@ -158,6 +159,8 @@ data Gameboy =
   }
 makeLenses ''Gameboy
 
+defaultGameboy :: Gameboy
+defaultGameboy = Gameboy defaultCpu defaultMemory
 
 
 data Instruction =
@@ -168,6 +171,13 @@ data Instruction =
     _operation :: (Gameboy -> Gameboy)
   }
 makeLenses ''Instruction
+
+instance Show Instruction where
+  show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
+
+
+displayCPU :: Gameboy -> IO ()
+displayCPU gb = display (InWindow "Nice Window" (400, 400) (10, 10)) white (cpuToPicture $ gb ^. cpu)
 
 
 getMemory :: Gameboy -> EmuData -> EmuData
@@ -223,9 +233,9 @@ ldRegRegData (r1, r2) = (\gb -> (setRegister gb r2) (getMemory gb $ getRegister 
 ldRegData :: Register -> (Gameboy -> Gameboy)
 ldRegData r
   | isReg16 r == True = \gb -> (setRegister (gb2 gb) r)
-    (combineEmuDataLittleEndian (getMemory (gb1 gb) $
-                                 getRegister (gb1 gb) PC) (getMemory (gb1 gb) $
-                                                           getRegister (gb1 gb) PC))
+    (combineEmuData (getMemory (gb2 gb) $
+                      getRegister (gb2 gb) PC) (getMemory (gb1 gb) $
+                                                 getRegister (gb1 gb) PC))
   | otherwise = \gb -> (setRegister (gb1 gb) r) (getMemory (gb1 gb) $ getRegister (gb1 gb) PC)
     where
       gb1 = incrementRegister PC
@@ -556,17 +566,20 @@ decodeOp (Eight 0x85) = Instruction (Eight 0x85) "ADD A, L" $ addReg L
 --TODO 0x86 "ADD A, (HL)"
 decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" $ addReg A
 --TODO 0x88 - 0xFF
-decodeOp _ = Instruction (Eight 0x00) "Invalid OP" id
-
+decodeOp (Eight x) = Instruction (Eight x) "Invalid OP" id
 
 evalInstruction :: Gameboy -> Instruction -> Gameboy
 evalInstruction gb inst = gb & inst ^. operation
 
 fetchNextInstr :: Gameboy -> Instruction
-fetchNextInstr gb = decodeOp $ getRegister gb PC
+fetchNextInstr gb = decodeOp $ getMemory gb $ getRegister gb PC
 
 stepGameboy :: Gameboy -> Gameboy
-stepGameboy gb = incrementRegisterWithoutFlags SP . evalInstruction gb $ fetchNextInstr gb
+stepGameboy gb = incrementRegisterWithoutFlags PC . evalInstruction gb $ fetchNextInstr gb
+
+stepNGameboy :: Int -> (Gameboy -> Gameboy)
+stepNGameboy 0 = id
+stepNGameboy n = (\gb -> stepGameboy gb) . (stepNGameboy $ n - 1)
 
 loadBootRom :: Gameboy -> Gameboy
 loadBootRom gb = (\gb_ -> setMemory gb_ (Sixteen 0x00FF) (Eight 0x50)) .
