@@ -29,8 +29,11 @@ instance Show EmuData where
   show (Eight w)   = show w
   show (Sixteen w) = show w
 
+toWord16 :: Word8 -> Word16
+toWord16 w = fromIntegral w
+
 combineEmuData :: EmuData -> EmuData -> EmuData
-combineEmuData (Eight d1) (Eight d2) = Sixteen . fromIntegral $ (shiftL d1 8) .|. d2
+combineEmuData (Eight d1) (Eight d2) = Sixteen $ (shiftL (toWord16 d1) 8) .|. (toWord16 d2)
 --TODO non exhaustive
 
 breakHiEnum :: EmuData -> EmuData
@@ -77,7 +80,7 @@ cpuToPicture cpu = text $ show cpu
 
 defaultCpu :: Cpu
 defaultCpu = (Cpu
-             (Eight 0x00)
+             (Eight 0x01)
              (Eight 0x00)
              (Eight 0x00)
              (Eight 0x00)
@@ -211,11 +214,11 @@ ldReg d s = \gb -> setRegister gb d $ getRegister gb s
 ldRegMem :: Register -> EmuData -> (Gameboy -> Gameboy)
 ldRegMem reg addr = \gb -> setRegister gb reg $ getMemory gb addr
 
---TODO come up with a better name
+--TODO come up with a better name --NOTE that's probably not going to happen at this point.
 ldRegRegAddr :: Register -> (Register, Register) -> (Gameboy -> Gameboy)
 ldRegRegAddr r (h, l) = \gb -> setRegister gb r $ getMemory gb $ getRegisters gb h l
 
---TODO come up with a better name
+--TODO come up with a better name --NOTE that's probably not going to happen at this point.
 ldRegAddrReg :: (Register, Register) -> Register -> (Gameboy -> Gameboy)
 ldRegAddrReg (h, l) r = \gb -> setMemory gb (getRegisters gb h l) (getRegister gb r)
 
@@ -225,9 +228,9 @@ ldRegAddrData (r1, r2) gb = setMemory gb1 (getRegisters gb r1 r2) (getMemory gb1
     gb1 = incrementRegister PC gb
 
 ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
-ldRegRegData (r1, r2) = (\gb -> (setRegister gb r2) (getMemory gb $ getRegister gb PC)) .
+ldRegRegData (r1, r2) = (\gb -> (setRegister gb r1) (getMemory gb $ getRegister gb PC)) .
                         incrementRegister PC .
-                        (\gb -> (setRegister gb r1) (getMemory gb $ getRegister gb PC)) .
+                        (\gb -> (setRegister gb r2) (getMemory gb $ getRegister gb PC)) .
                         incrementRegister PC
 
 ldRegData :: Register -> (Gameboy -> Gameboy)
@@ -428,6 +431,9 @@ rotateRightACarry = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False
                     (\gb -> setFlag carryFlag (testBit (_eight $ getRegister gb A) 7) gb) .
                     (\gb -> setRegister gb A $ Eight $ rotateR (_eight $ getRegister gb A) 1)
 
+xorReg :: Register -> (Gameboy -> Gameboy)
+xorReg r = (\gb -> setRegister gb A $ Eight $ xor (_eight $ getRegister gb A) (_eight $ getRegister gb r))
+
 decodeOp :: EmuData-> Instruction
 decodeOp (Eight 0x00) = Instruction (Eight 0x00) "NOP" id
 decodeOp (Eight 0x01) = Instruction (Eight 0x01) "LD BC, d16" $ ldRegRegData (B, C)
@@ -480,6 +486,7 @@ decodeOp (Eight 0x2E) = Instruction (Eight 0x2E) "LD L, d8" $ ldRegData L
 --TODO 0x30 "JR NC, r8"
 decodeOp (Eight 0x31) = Instruction (Eight 0x31) "LD SP, d16" $ ldRegData SP
 --TODO 0x32 "LD (HL-), A"
+decodeOp (Eight 0x32) = Instruction (Eight 0x32) "LD (HL-), A" $ decrementRegisters (H, L) . ldRegAddrReg (H, L) A
 decodeOp (Eight 0x33) = Instruction (Eight 0x33) "INC SP" $ incrementRegisterWithoutFlags SP
 decodeOp (Eight 0x34) = Instruction (Eight 0x34) "INC (HL)" $ incrementMemoryRegReg (H, L)
 decodeOp (Eight 0x35) = Instruction (Eight 0x35) "DEC (HL)" $ decrementMemoryRegReg (H, L)
@@ -565,8 +572,28 @@ decodeOp (Eight 0x84) = Instruction (Eight 0x84) "ADD A, H" $ addReg H
 decodeOp (Eight 0x85) = Instruction (Eight 0x85) "ADD A, L" $ addReg L
 --TODO 0x86 "ADD A, (HL)"
 decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" $ addReg A
---TODO 0x88 - 0xFF
-decodeOp (Eight x) = Instruction (Eight x) "Invalid OP" id
+--TODO 0x88 - 0xAE
+decodeOp (Eight 0xAF) = Instruction (Eight 0xAF) "XOR A" $ xorReg A
+--TODO 0xB0 - 0xCA
+decodeOp (Eight 0xCB) = Instruction (Eight 0xCB) "[CB Instruction]" $ \gb -> (decodeCb $ fetchCb gb) gb
+
+fetchCb :: Gameboy -> EmuData
+fetchCb gb = getMemory gb $ getRegister gb PC
+
+bit_ :: EmuData -> Int -> Bool
+bit_ (Sixteen d) b = testBit d $ b
+
+testBitReg :: Register -> Int -> (Gameboy -> Gameboy)
+testBitReg r i
+  | isReg16 r == False = \gb -> zero . sub . half $ gb
+      where
+        isSet = \gb -> bit_ (getRegister gb r) i
+        zero  = \gb -> (setFlag zeroFlag $ isSet gb) $ gb
+        sub   = setFlag subtractFlag  False
+        half  = setFlag halfCarryFlag True
+
+decodeCb :: EmuData -> (Gameboy -> Gameboy)
+decodeCb (Eight 0x7C) = testBitReg H 7
 
 evalInstruction :: Gameboy -> Instruction -> Gameboy
 evalInstruction gb inst = gb & inst ^. operation
@@ -828,13 +855,13 @@ loadBootRom gb = (\gb_ -> setMemory gb_ (Sixteen 0x00FF) (Eight 0x50)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x000C) (Eight 0x21)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x000B) (Eight 0xFE)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x000A) (Eight 0x20)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0009) (Eight 0x7C)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0008) (Eight 0xCB)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0007) (Eight 0x32)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0006) (Eight 0x9F)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0005) (Eight 0xFF)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0004) (Eight 0x21)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0003) (Eight 0xAF)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0002) (Eight 0xFF)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0001) (Eight 0xFE)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0000) (Eight 0x31)) $ gb
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0009) (Eight 0x7C)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0008) (Eight 0xCB)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0007) (Eight 0x32)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0006) (Eight 0x9F)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0005) (Eight 0xFF)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0004) (Eight 0x21)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0003) (Eight 0xAF)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0002) (Eight 0xFF)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0001) (Eight 0xFE)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0000) (Eight 0x31)) $ gb --Good
