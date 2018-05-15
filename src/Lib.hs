@@ -12,7 +12,8 @@ import Data.Bits
 import Data.Binary.Get
 import Graphics.Gloss
 
-data EmuData =
+
+data EmuData = --NOTE I fucking regret doing this. TODO refactor everything and get rid of it.
   Eight
   {
     _eight :: Word8
@@ -316,7 +317,7 @@ incrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
 incrementRegistersWithoutFlags (r1, r2) = \gb -> setRegisters gb r1 r2 $ incrementEmuData $ getRegisters gb r1 r2
 
 decrementRegisterWithoutFlags :: Register -> (Gameboy -> Gameboy)
-decrementRegisterWithoutFlags r = \gb -> setRegister gb r $ incrementEmuData $ getRegister gb r
+decrementRegisterWithoutFlags r = \gb -> setRegister gb r $ decrementEmuData $ getRegister gb r
 
 decrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
 decrementRegistersWithoutFlags (r1, r2) = \gb -> setRegisters gb r1 r2 $ decrementEmuData $ getRegisters gb r1 r2
@@ -406,25 +407,31 @@ rotateLeftACarry = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False)
                    (\gb -> setFlag carryFlag (testBit (_eight $ getRegister gb A) 0) gb) .
                    (\gb -> setRegister gb A $ Eight $ rotateL (_eight $ getRegister gb A) 1)
 
-rotateLeftA :: Gameboy -> Gameboy
-rotateLeftA gb = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) $
-                 (\gb1 -> setRegister gb1 A $ Eight $ ((_eight $ getRegister gb1 A) .&. 0b11111110) .|. carryBeforeMask) $
+rotateLeft :: Register -> (Gameboy -> Gameboy)
+rotateLeft r gb = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) $
+                 (\gb1 -> setRegister gb1 r $ Eight $ ((_eight $ getRegister gb1 r) .&. 0b11111110) .|. carryBeforeMask) $
                  setFlag carryFlag carryAfter $
-                 setRegister gb A $ Eight $ rotateL (_eight $ getRegister gb A) 1
+                 setRegister gb r $ Eight $ rotateL (_eight $ getRegister gb r) 1
   where
     carryBefore = getFlag gb carryFlag
-    carryAfter  = testBit (_eight $ getRegister gb A) 7
+    carryAfter  = testBit (_eight $ getRegister gb r) 7
     carryBeforeMask = if carryBefore then 0b00000001 else 0b00000000
 
-rotateRightA :: Gameboy -> Gameboy
-rotateRightA gb = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) $
-                  (\gb1 -> setRegister gb1 A $ Eight $ ((_eight $ getRegister gb1 A) .&. 0b11111110) .|. carryBeforeMask) $
+rotateRight :: Register -> (Gameboy -> Gameboy)
+rotateRight r gb = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) $
+                  (\gb1 -> setRegister gb1 r $ Eight $ ((_eight $ getRegister gb1 r) .&. 0b11111110) .|. carryBeforeMask) $
                   setFlag carryFlag carryAfter $
-                  setRegister gb A $ Eight $ rotateR (_eight $ getRegister gb A) 1
+                  setRegister gb r $ Eight $ rotateR (_eight $ getRegister gb r) 1
   where
     carryBefore = getFlag gb carryFlag
-    carryAfter  = testBit (_eight $ getRegister gb A) 0
+    carryAfter  = testBit (_eight $ getRegister gb r) 0
     carryBeforeMask = if carryBefore then 0b10000000 else 0b00000000
+
+rotateLeftA :: Gameboy -> Gameboy
+rotateLeftA = rotateLeft A
+
+rotateRightA :: Gameboy -> Gameboy
+rotateRightA = rotateRight A
 
 rotateRightACarry :: (Gameboy -> Gameboy)
 rotateRightACarry = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False) .
@@ -434,7 +441,69 @@ rotateRightACarry = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False
 xorReg :: Register -> (Gameboy -> Gameboy)
 xorReg r = (\gb -> setRegister gb A $ Eight $ xor (_eight $ getRegister gb A) (_eight $ getRegister gb r))
 
-decodeOp :: EmuData-> Instruction
+wordToSignedInt :: Word8 -> Int
+wordToSignedInt w
+  | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
+  | otherwise = fromIntegral w
+
+jumpRNZ :: Gameboy -> Gameboy
+jumpRNZ gb = if getFlag gb1 zeroFlag
+             then setRegister gb1 PC (Sixteen . fromIntegral $ (fromIntegral $ _sixteen $ getRegister gb1 PC) + (wordToSignedInt d))
+             else gb1
+  where
+    d = _eight $ getMemory gb1 (getRegister gb1 PC)
+    gb1 = incrementRegisterWithoutFlags PC gb
+
+ldFFRegAddrReg :: Register -> Register -> (Gameboy -> Gameboy)
+ldFFRegAddrReg d s = \gb -> setMemory gb (Sixteen (0xFF00 + (toWord16 . _eight $ getRegister gb d))) $ getRegister gb s
+
+ldhA :: Gameboy -> Gameboy
+ldhA gb = setMemory gb1 (Sixteen (0xFF00 +
+                                  (toWord16 . _eight $ (getMemory gb1 $ getRegister gb1 PC))))
+          (getRegister gb1 A)
+  where
+    gb1 = incrementRegisterWithoutFlags PC gb
+
+
+toWord8 :: Word16 -> Word8
+toWord8 w = fromIntegral w
+
+push :: EmuData -> (Gameboy -> Gameboy)
+push (Sixteen d) = pushByte dhi . pushByte dlo
+  where
+    dhi = Eight . toWord8 $ shiftR d 8
+    dlo = Eight . toWord8 $ 0x00FF .&. d
+    pushByte = \b  -> decrementRegisterWithoutFlags SP .
+               \gb -> setMemory gb (getRegister gb SP) b
+
+pop :: (Register, Register) -> (Gameboy -> Gameboy)
+pop (r1, r2) = \gb -> setRegisters (incrementRegister SP (incrementRegister SP gb)) r1 r2
+                      (combineEmuData
+                        (getMemory gb $ getRegister (incrementRegister SP gb) SP)
+                        (getMemory gb $ getRegister (incrementRegister SP (incrementRegister SP gb)) SP))
+
+--TODO NOTE I may want to increment without flags on pop and ret.
+
+call :: Gameboy -> Gameboy
+call gb = decrementRegisterWithoutFlags PC
+  ((\gb_ -> (setRegister gb_ PC $ combineEmuData
+              (getMemory gb2 $ getRegister gb2 PC)
+              (getMemory gb1 $ getRegister gb1 PC))) .
+    (push (getRegister gb3 PC)) $ gb)
+
+  where
+    gb1 = incrementRegisterWithoutFlags PC gb
+    gb2 = incrementRegisterWithoutFlags PC gb1
+    gb3 = incrementRegisterWithoutFlags PC gb2
+
+ret :: Gameboy -> Gameboy
+ret gb = decrementRegisterWithoutFlags PC
+         (setRegister (incrementRegister SP (incrementRegister SP gb)) PC
+          (combineEmuData
+           (getMemory gb $ getRegister (incrementRegister SP gb) SP)
+           (getMemory gb $ getRegister (incrementRegister SP (incrementRegister SP gb)) SP)))
+
+decodeOp :: EmuData -> Instruction
 decodeOp (Eight 0x00) = Instruction (Eight 0x00) "NOP" id
 decodeOp (Eight 0x01) = Instruction (Eight 0x01) "LD BC, d16" $ ldRegRegData (B, C)
 decodeOp (Eight 0x02) = Instruction (Eight 0x02) "LD (BC), A" $ ldRegAddrReg (B, C) A
@@ -468,8 +537,9 @@ decodeOp (Eight 0x1D) = Instruction (Eight 0x1D) "DEC E" $ decrementRegister E
 decodeOp (Eight 0x1E) = Instruction (Eight 0x1E) "LD C, d8" $ ldRegData C
 decodeOp (Eight 0x1F) = Instruction (Eight 0x1F) "RRA" rotateRightA
 --TODO 0x20 "JR NZ, r8"
+decodeOp (Eight 0x20) = Instruction (Eight 0x20) "JR NZ, r8" $ jumpRNZ
 decodeOp (Eight 0x21) = Instruction (Eight 0x21) "LD HL, d16" $ ldRegRegData (H, L)
---TODO 0x22 "LD (HL+), A"
+decodeOp (Eight 0x22) = Instruction (Eight 0x22) "LD (HL+), A" $ incrementRegisters (H, L) . ldRegAddrReg (H, L) A
 decodeOp (Eight 0x23) = Instruction (Eight 0x23) "INC HL" $ incrementRegistersWithoutFlags (H, L)
 decodeOp (Eight 0x24) = Instruction (Eight 0x24) "INC H" $ incrementRegister H
 decodeOp (Eight 0x25) = Instruction (Eight 0x25) "DEC H" $ decrementRegister H
@@ -575,13 +645,25 @@ decodeOp (Eight 0x87) = Instruction (Eight 0x87) "ADD A, A" $ addReg A
 --TODO 0x88 - 0xAE
 decodeOp (Eight 0xAF) = Instruction (Eight 0xAF) "XOR A" $ xorReg A
 --TODO 0xB0 - 0xCA
-decodeOp (Eight 0xCB) = Instruction (Eight 0xCB) "[CB Instruction]" $ \gb -> (decodeCb $ fetchCb gb) gb
+decodeOp (Eight 0xC1) = Instruction (Eight 0xC1) "POP BC" $ pop (B, C)
+decodeOp (Eight 0xC5) = Instruction (Eight 0xC5) "PUSH BC" $ \gb -> push (getRegisters gb B C) gb
+decodeOp (Eight 0xC9) = Instruction (Eight 0xC9) "RET" $ ret
+decodeOp (Eight 0xCB) = Instruction (Eight 0xCB) "[CB Instruction]" $ \gb -> (decodeCb $ fetchCb $ incrementRegisterWithoutFlags PC gb)
+                                                                             $ incrementRegisterWithoutFlags PC gb
+--TODO 0xCC
+decodeOp (Eight 0xCD) = Instruction (Eight 0xCD) "CALL a8" $ call
+decodeOp (Eight 0xE0) = Instruction (Eight 0xE0) "LD (a8), A" $ ldhA
+--TODO 0xE1
+decodeOp (Eight 0xE2) = Instruction (Eight 0xE2) "LD (C), A" $ ldFFRegAddrReg C A
+--TODO 0xE3 - 0xFF
+
 
 fetchCb :: Gameboy -> EmuData
 fetchCb gb = getMemory gb $ getRegister gb PC
 
 bit_ :: EmuData -> Int -> Bool
 bit_ (Sixteen d) b = testBit d $ b
+bit_ (Eight d) b = testBit d $ b
 
 testBitReg :: Register -> Int -> (Gameboy -> Gameboy)
 testBitReg r i
@@ -594,6 +676,7 @@ testBitReg r i
 
 decodeCb :: EmuData -> (Gameboy -> Gameboy)
 decodeCb (Eight 0x7C) = testBitReg H 7
+decodeCb (Eight 0x11) = rotateLeft C
 
 evalInstruction :: Gameboy -> Instruction -> Gameboy
 evalInstruction gb inst = gb & inst ^. operation
@@ -605,8 +688,7 @@ stepGameboy :: Gameboy -> Gameboy
 stepGameboy gb = incrementRegisterWithoutFlags PC . evalInstruction gb $ fetchNextInstr gb
 
 stepNGameboy :: Int -> (Gameboy -> Gameboy)
-stepNGameboy 0 = id
-stepNGameboy n = (\gb -> stepGameboy gb) . (stepNGameboy $ n - 1)
+stepNGameboy n = Prelude.foldl (.) id $ Prelude.replicate n stepGameboy
 
 loadBootRom :: Gameboy -> Gameboy
 loadBootRom gb = (\gb_ -> setMemory gb_ (Sixteen 0x00FF) (Eight 0x50)) .
@@ -698,24 +780,24 @@ loadBootRom gb = (\gb_ -> setMemory gb_ (Sixteen 0x00FF) (Eight 0x50)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x00A9) (Eight 0xED)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x00A8) (Eight 0xCE)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x00A7) (Eight 0xC9)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x00A6) (Eight 0x23)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x00A5) (Eight 0x22)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x00A4) (Eight 0x23)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x00A3) (Eight 0x22)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x00A2) (Eight 0xF5)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x00A1) (Eight 0x20)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x00A0) (Eight 0x05)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x009F) (Eight 0x17)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x009E) (Eight 0x11)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x009D) (Eight 0xCB)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x009C) (Eight 0xC1)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x009B) (Eight 0x17)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x009A) (Eight 0x11)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0099) (Eight 0xCB)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0098) (Eight 0xC5)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0097) (Eight 0x04)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0096) (Eight 0x06)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0095) (Eight 0x4F)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A6) (Eight 0x23)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A5) (Eight 0x22)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A4) (Eight 0x23)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A3) (Eight 0x22)) . --24607 Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A2) (Eight 0xF5)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A1) (Eight 0x20)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x00A0) (Eight 0x05)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009F) (Eight 0x17)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009E) (Eight 0x11)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009D) (Eight 0xCB)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009C) (Eight 0xC1)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009B) (Eight 0x17)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x009A) (Eight 0x11)) . --24600 Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0099) (Eight 0xCB)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0098) (Eight 0xC5)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0097) (Eight 0x04)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0096) (Eight 0x06)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0095) (Eight 0x4F)) . --Good
                  (\gb_ -> setMemory gb_ (Sixteen 0x0094) (Eight 0xCB)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x0093) (Eight 0x18)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x0092) (Eight 0x20)) .
@@ -816,47 +898,47 @@ loadBootRom gb = (\gb_ -> setMemory gb_ (Sixteen 0x00FF) (Eight 0x50)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x0033) (Eight 0xF3)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x0032) (Eight 0x20)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x0031) (Eight 0x34)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0030) (Eight 0xFE)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x002F) (Eight 0x7B)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x002E) (Eight 0x13)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x002D) (Eight 0x00)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x002C) (Eight 0x96)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x002B) (Eight 0xCD)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x002A) (Eight 0x00)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0029) (Eight 0x95)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0028) (Eight 0xCD)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0027) (Eight 0x1A)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0026) (Eight 0x80)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0025) (Eight 0x10)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0024) (Eight 0x21)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0023) (Eight 0x01)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0022) (Eight 0x04)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0021) (Eight 0x11)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0020) (Eight 0x47)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x001F) (Eight 0xE0)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x001E) (Eight 0xFC)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x001D) (Eight 0x3E)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x001C) (Eight 0x77)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x001B) (Eight 0x77)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x001A) (Eight 0x3E)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0019) (Eight 0x32)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0018) (Eight 0xE2)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0017) (Eight 0xF3)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0016) (Eight 0x3E)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0015) (Eight 0x0C)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0014) (Eight 0xE2)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0013) (Eight 0x32)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0012) (Eight 0x80)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0011) (Eight 0x3E)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0010) (Eight 0x11)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x000F) (Eight 0x0E)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x000E) (Eight 0xFF)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x000D) (Eight 0x26)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x000C) (Eight 0x21)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x000B) (Eight 0xFE)) .
-                 (\gb_ -> setMemory gb_ (Sixteen 0x000A) (Eight 0x20)) .
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0030) (Eight 0xFE)) . 
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002F) (Eight 0x7B)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002E) (Eight 0x13)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002D) (Eight 0x00)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002C) (Eight 0x96)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002B) (Eight 0xCD)) . --24611 should put PC here. : Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x002A) (Eight 0x00)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0029) (Eight 0x95)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0028) (Eight 0xCD)) . --24596 Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0027) (Eight 0x1A)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0026) (Eight 0x80)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0025) (Eight 0x10)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0024) (Eight 0x21)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0023) (Eight 0x01)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0022) (Eight 0x04)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0021) (Eight 0x11)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0020) (Eight 0x47)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001F) (Eight 0xE0)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001E) (Eight 0xFC)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001D) (Eight 0x3E)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001C) (Eight 0x77)) . --Maybe Good 24590 steps
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001B) (Eight 0x77)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x001A) (Eight 0x3E)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0019) (Eight 0x32)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0018) (Eight 0xE2)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0017) (Eight 0xF3)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0016) (Eight 0x3E)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0015) (Eight 0x0C)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0014) (Eight 0xE2)) . -- 24584 steps : Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0013) (Eight 0x32)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0012) (Eight 0x80)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0011) (Eight 0x3E)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0010) (Eight 0x11)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000F) (Eight 0x0E)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000E) (Eight 0xFF)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000D) (Eight 0x26)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000C) (Eight 0x21)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000B) (Eight 0xFB)) . --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x000A) (Eight 0x20)) . --Must run 24578 steps to get to this opcode : Maybe Good
                  (\gb_ -> setMemory gb_ (Sixteen 0x0009) (Eight 0x7C)) . --Maybe Good
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0008) (Eight 0xCB)) . --Maybe Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0008) (Eight 0xCB)) . --Good
                  (\gb_ -> setMemory gb_ (Sixteen 0x0007) (Eight 0x32)) . --Good
                  (\gb_ -> setMemory gb_ (Sixteen 0x0006) (Eight 0x9F)) . --Good
                  (\gb_ -> setMemory gb_ (Sixteen 0x0005) (Eight 0xFF)) . --Good
@@ -864,4 +946,17 @@ loadBootRom gb = (\gb_ -> setMemory gb_ (Sixteen 0x00FF) (Eight 0x50)) .
                  (\gb_ -> setMemory gb_ (Sixteen 0x0003) (Eight 0xAF)) . --Good
                  (\gb_ -> setMemory gb_ (Sixteen 0x0002) (Eight 0xFF)) . --Good
                  (\gb_ -> setMemory gb_ (Sixteen 0x0001) (Eight 0xFE)) . --Good
-                 (\gb_ -> setMemory gb_ (Sixteen 0x0000) (Eight 0x31)) $ gb --Good
+                 (\gb_ -> setMemory gb_ (Sixteen 0x0000) (Eight 0x31)) $ gb --I may have a mistake here.
+
+runGameboyNSteps :: Int -> Gameboy
+runGameboyNSteps n = stepNGameboy n $ loadBootRom defaultGameboy
+
+data LcdState =
+  LcdState
+  {
+    tileMapSelect :: (EmuData, EmuData),
+    windowDisplay :: Bool,
+    bgTileData    :: (EmuData, EmuData),
+    bgTileMap     :: (EmuData, EmuData),
+    spriteSize    :: Bool
+  }
