@@ -477,12 +477,11 @@ push (Sixteen d) = pushByte dhi . pushByte dlo
                \gb -> setMemory gb (getRegister gb SP) b
 
 pop :: (Register, Register) -> (Gameboy -> Gameboy)
-pop (r1, r2) = \gb -> setRegisters (incrementRegister SP (incrementRegister SP gb)) r1 r2
+pop (r1, r2) = \gb -> setRegisters (incrementRegisterWithoutFlags SP (incrementRegisterWithoutFlags SP gb)) r1 r2
                       (combineEmuData
-                        (getMemory gb $ getRegister (incrementRegister SP gb) SP)
-                        (getMemory gb $ getRegister (incrementRegister SP (incrementRegister SP gb)) SP))
+                        (getMemory gb $ getRegister (incrementRegisterWithoutFlags SP gb) SP)
+                        (getMemory gb $ getRegister (incrementRegisterWithoutFlags SP (incrementRegisterWithoutFlags SP gb)) SP))
 
---TODO NOTE I may want to increment without flags on pop and ret.
 
 call :: Gameboy -> Gameboy
 call gb = decrementRegisterWithoutFlags PC
@@ -498,10 +497,19 @@ call gb = decrementRegisterWithoutFlags PC
 
 ret :: Gameboy -> Gameboy
 ret gb = decrementRegisterWithoutFlags PC
-         (setRegister (incrementRegister SP (incrementRegister SP gb)) PC
+         (setRegister (incrementRegisterWithoutFlags SP (incrementRegisterWithoutFlags SP gb)) PC
           (combineEmuData
-           (getMemory gb $ getRegister (incrementRegister SP gb) SP)
-           (getMemory gb $ getRegister (incrementRegister SP (incrementRegister SP gb)) SP)))
+           (getMemory gb $ getRegister (incrementRegisterWithoutFlags SP gb) SP)
+           (getMemory gb $ getRegister (incrementRegisterWithoutFlags SP (incrementRegisterWithoutFlags SP gb)) SP)))
+
+--TODO This may be horribly incorrect.
+cp :: EmuData -> (Gameboy -> Gameboy)
+cp d = zero . halfCarry . subtractf
+  where
+    subtraction = \gb -> (_eight $ getRegister A gb) - d
+    zero        = \gb -> setZero subtraction gb
+    halfCarry   = \gb -> setHalfCarry subtraction d gb
+    subtractf   = \gb -> setFlag subtractFlag True gb
 
 decodeOp :: EmuData -> Instruction
 decodeOp (Eight 0x00) = Instruction (Eight 0x00) "NOP" id
