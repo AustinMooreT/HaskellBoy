@@ -267,8 +267,8 @@ setZero d = setFlag zeroFlag $ isZeroEmuData d
 
 --TODO check logic
 setCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
-setCarry (Eight e1) (Eight e2) = setFlag zeroFlag (e1 < e2)
-setCarry (Sixteen e1) (Sixteen e2) = setFlag zeroFlag (e1 < e2)
+setCarry (Eight e1) (Eight e2) = setFlag carryFlag (e1 < e2)
+setCarry (Sixteen e1) (Sixteen e2) = setFlag carryFlag (e1 < e2)
 
 --TODO check logic
 setHalfCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
@@ -506,8 +506,8 @@ ret gb = decrementRegisterWithoutFlags PC
 cp :: EmuData -> (Gameboy -> Gameboy)
 cp d = zero . halfCarry . subtractf
   where
-    subtraction = \gb -> (_eight $ getRegister A gb) - d
-    zero        = \gb -> setZero subtraction gb
+    subtraction = \gb -> Eight $ (_eight $ getRegister gb A) - (_eight d)
+    zero        = \gb -> setZero $ subtraction gb
     halfCarry   = \gb -> setHalfCarry subtraction d gb
     subtractf   = \gb -> setFlag subtractFlag True gb
 
