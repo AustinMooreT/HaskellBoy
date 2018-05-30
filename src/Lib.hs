@@ -2,8 +2,8 @@
 {-# LANGUAGE BinaryLiterals #-}
 
 module Lib
-    (defaultCpu,
-    cpuToPicture) where
+    (defaultCpu) where
+
 
 import Data.Word
 import Control.Lens
@@ -12,56 +12,43 @@ import Data.Bits
 import Data.Binary.Get
 import Graphics.Gloss
 
-
-data EmuData = --NOTE I fucking regret doing this. TODO refactor everything and get rid of it.
-  Eight
-  {
-    _eight :: Word8
-  }
-  |
-  Sixteen
-  {
-    _sixteen :: Word16
-  }
-makeLenses ''EmuData
-makePrisms ''EmuData
-
-instance Show EmuData where
-  show (Eight w)   = show w
-  show (Sixteen w) = show w
-
+--DATA
 toWord16 :: Word8 -> Word16
 toWord16 w = fromIntegral w
 
-combineEmuData :: EmuData -> EmuData -> EmuData
-combineEmuData (Eight d1) (Eight d2) = Sixteen $ (shiftL (toWord16 d1) 8) .|. (toWord16 d2)
---TODO non exhaustive
+--DATA
+combineData :: Word8 -> Word8 -> Word16
+combineData d1 d2 = shiftL (toWord16 d1) 8 .|. toWord16 d2
 
-breakHiEnum :: EmuData -> EmuData
-breakHiEnum (Sixteen d) = Eight . fromIntegral $ shiftR d 8
---TODO non exhaustive
+--DATA
+breakHi :: Word16 -> Word8
+breakHi d = fromIntegral $ shiftR d 8
 
-breakLoEnum :: EmuData -> EmuData
-breakLoEnum (Sixteen d) = Eight $ fromIntegral d
---TODO non exhaustive
+--DATA
+breakLo :: Word16 -> Word8
+breakLo d = fromIntegral d
 
 
-
+--CPU
 data Cpu =
   Cpu
   {
-    _registerA  :: EmuData,
-    _registerB  :: EmuData,
-    _registerC  :: EmuData,
-    _registerD  :: EmuData,
-    _registerE  :: EmuData,
-    _registerF  :: EmuData,
-    _registerH  :: EmuData,
-    _registerL  :: EmuData,
-    _registerSP :: EmuData,
-    _registerPC :: EmuData
+    _registerA    :: Word8,
+    _registerB    :: Word8,
+    _registerC    :: Word8,
+    _registerD    :: Word8,
+    _registerE    :: Word8,
+    _registerF    :: Word8,
+    _registerH    :: Word8,
+    _registerL    :: Word8,
+    _registerS_hi :: Word8,
+    _registerP_lo :: Word8,
+    _registerP_hi :: Word8,
+    _registerC_lo :: Word8
   }
 makeLenses ''Cpu
+
+--CPU
 instance Show Cpu where
   show cpu = "A:[" Prelude.++ (show $ cpu ^. registerA) Prelude.++ "]\n" Prelude.++
              "B:[" Prelude.++ (show $ cpu ^. registerB) Prelude.++ "]\n" Prelude.++
@@ -71,79 +58,77 @@ instance Show Cpu where
              "F:[" Prelude.++ (show $ cpu ^. registerF) Prelude.++ "]\n" Prelude.++
              "H:[" Prelude.++ (show $ cpu ^. registerH) Prelude.++ "]\n" Prelude.++
              "L:[" Prelude.++ (show $ cpu ^. registerL) Prelude.++ "]\n" Prelude.++
-             "SP:[" Prelude.++ (show $ cpu ^. registerSP) Prelude.++ "]\n" Prelude.++
-             "PC:[" Prelude.++ (show $ cpu ^. registerPC) Prelude.++ "]\n"
+             "SP:[" Prelude.++ (show $ cpu ^. composeRegisterLenses (SHI, PLO)) Prelude.++ "]\n" Prelude.++
+             "PC:[" Prelude.++ (show $ cpu ^. composeRegisterLenses (PHI, CLO)) Prelude.++ "]\n"
 
-cpuToPicture :: Cpu -> Picture
-cpuToPicture cpu = text $ show cpu
-
-
-
+--CPU
 defaultCpu :: Cpu
-defaultCpu = (Cpu
-             (Eight 0x01)
-             (Eight 0x00)
-             (Eight 0x00)
-             (Eight 0x00)
-             (Eight 0x00)
-             (Eight 0x00)
-             (Eight 0x00)
-             (Eight 0x00)
-             (Sixteen 0x0000)
-             (Sixteen 0x0000))
+defaultCpu = Cpu 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
 
-data Register = A | B | C | D | E | F | H | L | SP | PC
+--CPU
+data Register = A | B | C | D | E | F | H | L | SHI | PLO | PHI | CLO
 
+--CPU
 zeroFlag :: Word8
 zeroFlag = 128
 
+--CPU
 subtractFlag :: Word8
 subtractFlag = 64
 
+--CPU
 halfCarryFlag :: Word8
 halfCarryFlag = 32
 
+--CPU
 carryFlag :: Word8
 carryFlag = 16
 
+--CPU
 flagToInt :: Word8 -> Int
 flagToInt 128 = 7
 flagToInt 64  = 6
 flagToInt 32  = 5
 flagToInt 16  = 4
 
-registerToFunc :: Register -> (Cpu -> EmuData)
-registerToFunc A  = _registerA
-registerToFunc B  = _registerB
-registerToFunc C  = _registerC
-registerToFunc D  = _registerD
-registerToFunc E  = _registerE
-registerToFunc F  = _registerF
-registerToFunc H  = _registerH
-registerToFunc L  = _registerL
-registerToFunc SP = _registerSP
-registerToFunc PC = _registerPC
+--CPU
+registerToFunc :: Register -> (Cpu -> Word8)
+registerToFunc A    = _registerA
+registerToFunc B    = _registerB
+registerToFunc C    = _registerC
+registerToFunc D    = _registerD
+registerToFunc E    = _registerE
+registerToFunc F    = _registerF
+registerToFunc H    = _registerH
+registerToFunc L    = _registerL
+registerToFunc SHI  = _registerS_hi
+registerToFunc PLO  = _registerP_lo
+registerToFunc PHI  = _registerP_hi
+registerToFunc CLO  = _registerC_lo
 
-registerToLens :: Functor f => Register -> (EmuData -> f EmuData) -> Cpu -> f Cpu
-registerToLens A  = registerA
-registerToLens B  = registerB
-registerToLens C  = registerC
-registerToLens D  = registerD
-registerToLens E  = registerE
-registerToLens F  = registerF
-registerToLens H  = registerH
-registerToLens L  = registerL
-registerToLens SP = registerSP
-registerToLens PC = registerPC
+--CPU
+registerToLens :: Functor f => Register -> (Word8 -> f Word8) -> Cpu -> f Cpu
+registerToLens A    = registerA
+registerToLens B    = registerB
+registerToLens C    = registerC
+registerToLens D    = registerD
+registerToLens E    = registerE
+registerToLens F    = registerF
+registerToLens H    = registerH
+registerToLens L    = registerL
+registerToLens SHI  = registerS_hi
+registerToLens PLO  = registerP_lo
+registerToLens PHI  = registerP_hi
+registerToLens CLO  = registerC_lo
 
-composeRegisterLenses :: Functor f => Register -> Register -> (EmuData -> f EmuData) -> Cpu -> f Cpu
-composeRegisterLenses reg1 reg2 = lens getter setter
+--CPU
+composeRegisterLenses :: Functor f => (Register, Register) -> (Word16 -> f Word16) -> Cpu -> f Cpu
+composeRegisterLenses (reg1, reg2) = lens getter setter
   where
-    getter __cpu = combineEmuData (registerToFunc reg1 __cpu) (registerToFunc reg2 __cpu)
-    setter __cpu d = __cpu & registerToLens reg1 .~ breakHiEnum d & registerToLens reg2 .~ breakLoEnum d
+    getter __cpu = combineData (registerToFunc reg1 __cpu) (registerToFunc reg2 __cpu)
+    setter __cpu d = __cpu & registerToLens reg1 .~ breakHi d & registerToLens reg2 .~ breakLo d
 
-
-
+--MEMORY
 data Memory =
   Memory
   {
@@ -151,10 +136,11 @@ data Memory =
   }
 makeLenses ''Memory
 
+--MEMORY
 defaultMemory :: Memory
 defaultMemory = Memory $ V.replicate 0xFFFF 0x00
 
-
+--GAMEBOY --DEP CPU MEMORY
 data Gameboy =
   Gameboy
   {
@@ -163,55 +149,53 @@ data Gameboy =
   }
 makeLenses ''Gameboy
 
+--GAMEBOY --DEP CPU MEMORY
 defaultGameboy :: Gameboy
 defaultGameboy = Gameboy defaultCpu defaultMemory
 
-
+--GAMEBOY
 data Instruction =
   Instruction
   {
-    _opcode    :: EmuData,
+    _opcode    :: Word8,
     _name      :: String,
     _operation :: (Gameboy -> Gameboy)
   }
 makeLenses ''Instruction
 
+--GAMEBOY
 instance Show Instruction where
   show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
 
+--GAMEBOY
+getMemory :: Word16 -> Gameboy -> Word8
+getMemory addr gb = (view (memory . bytes) gb) ! (fromIntegral addr)
 
-displayCPU :: Gameboy -> IO ()
-displayCPU gb = display (InWindow "Nice Window" (400, 400) (10, 10)) white (cpuToPicture $ gb ^. cpu)
+--GAMEBOY
+setMemory :: Word16 -> Word8 -> Gameboy -> Gameboy
+setMemory addr d gb = over (memory . bytes) (\y -> y // [(fromIntegral addr, d)]) gb
 
+--GAMEBOY
+setRegister :: Register -> Word8 -> Gameboy -> Gameboy
+setRegister r d gb = gb & cpu . registerToLens r .~ d
 
-getMemory :: Gameboy -> EmuData -> EmuData
-getMemory gb (Sixteen addr) = Eight $ (view (memory . bytes) gb) ! (fromIntegral addr)
---TODO non exhaustive
+--GAMEBOY
+setRegisters :: (Register, Register) -> Word16 -> Gameboy -> Gameboy
+setRegisters rs d gb = gb & cpu . composeRegisterLenses rs .~ d
 
-setMemory :: Gameboy -> EmuData -> EmuData -> Gameboy
-setMemory gb (Sixteen addr) (Eight d) = over (memory . bytes) (\y -> y // [(fromIntegral addr, d)]) gb
---TODO non exhaustive
+--GAMEBOY
+getRegister :: Register -> Gameboy -> Word8
+getRegister r gb = gb ^. cpu . registerToLens r
 
-setRegister :: Gameboy -> Register -> EmuData -> Gameboy
-setRegister gb r d = gb & cpu . registerToLens r .~ d
+--GAMEBOY
+getRegisters :: (Register, Register) -> Gameboy -> Word16
+getRegisters rs gb = gb ^. cpu . composeRegisterLenses rs
 
-setRegisters :: Gameboy -> Register -> Register -> EmuData -> Gameboy
-setRegisters gb r1 r2 d = gb & cpu . composeRegisterLenses r1 r2 .~ d
-
-getRegister :: Gameboy -> Register -> EmuData
-getRegister gb r = gb ^. cpu . registerToLens r
-
-getRegisters :: Gameboy -> Register -> Register -> EmuData
-getRegisters gb r1 r2 = gb ^. cpu . composeRegisterLenses r1 r2
-
-isReg16 :: Register -> Bool
-isReg16 SP = True
-isReg16 PC = True
-isReg16 _  = False
-
+--GAMEBOY
 ldReg :: Register -> Register -> (Gameboy -> Gameboy)
-ldReg d s = \gb -> setRegister gb d $ getRegister gb s
+ldReg d s gb = setRegister d (getRegister s gb) gb
 
+{-
 ldRegMem :: Register -> EmuData -> (Gameboy -> Gameboy)
 ldRegMem reg addr = \gb -> setRegister gb reg $ getMemory gb addr
 
@@ -503,13 +487,13 @@ ret gb = decrementRegisterWithoutFlags PC
            (getMemory gb $ getRegister (incrementRegisterWithoutFlags SP (incrementRegisterWithoutFlags SP gb)) SP)))
 
 --TODO This may be horribly incorrect.
-cp :: EmuData -> (Gameboy -> Gameboy)
-cp d = zero . halfCarry . subtractf
-  where
-    subtraction = \gb -> (_eight $ getRegister A gb) - d
-    zero        = \gb -> setZero subtraction gb
-    halfCarry   = \gb -> setHalfCarry subtraction d gb
-    subtractf   = \gb -> setFlag subtractFlag True gb
+--cp :: EmuData -> (Gameboy -> Gameboy)
+--cp d = zero . halfCarry . subtractf
+--  where
+--   subtraction = \gb -> (_eight $ getRegister A gb) - d
+--    zero        = \gb -> setZero subtraction gb
+--    halfCarry   = \gb -> setHalfCarry subtraction d gb
+--    subtractf   = \gb -> setFlag subtractFlag True gb
 
 decodeOp :: EmuData -> Instruction
 decodeOp (Eight 0x00) = Instruction (Eight 0x00) "NOP" id
@@ -968,3 +952,4 @@ data LcdState =
     bgTileMap     :: (EmuData, EmuData),
     spriteSize    :: Bool
   }
+-}
