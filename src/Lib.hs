@@ -251,8 +251,8 @@ setZero d = setFlag zeroFlag $ isZeroEmuData d
 
 --TODO check logic
 setCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
-setCarry (Eight e1) (Eight e2) = setFlag zeroFlag (e1 < e2)
-setCarry (Sixteen e1) (Sixteen e2) = setFlag zeroFlag (e1 < e2)
+setCarry (Eight e1) (Eight e2) = setFlag carryFlag (e1 < e2)
+setCarry (Sixteen e1) (Sixteen e2) = setFlag carryFlag (e1 < e2)
 
 --TODO check logic
 setHalfCarry :: EmuData -> EmuData -> (Gameboy -> Gameboy)
