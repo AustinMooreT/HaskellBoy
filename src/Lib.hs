@@ -251,34 +251,36 @@ incrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
 incrementRegistersWithoutFlags rs gb = setRegisters rs (getRegisters rs gb + 1) gb
 
 --GAMEBOY
-ldRegAddrData :: (Register, Register) -> (Gameboy -> Gameboy)
-ldRegAddrData rs gb = setMemory (getRegisters rs gb) (getMemory (getRegisters (PHI, CLO) gb1) gb1) gb1
+-- | Using the 16 bit value stored in rs as an index set memory to the next byte from the program counter.
+ldMemRegRegWithData :: (Register, Register) -> (Gameboy -> Gameboy)
+ldMemRegRegWithData rs gb = setMemory (getRegisters rs gb) (getMemory (getRegisters (PHI, CLO) gb1) gb1) gb1
   where gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
---GAMEBOY --TODO
-ldRegRegData :: (Register, Register) -> (Gameboy -> Gameboy)
-ldRegRegData (r1, r2) = (\gb -> (setRegister gb r1) (getMemory gb $ getRegister gb PC)) .
-                        incrementRegister PC .
-                        (\gb -> (setRegister gb r2) (getMemory gb $ getRegister gb PC)) .
-                        incrementRegister PC
-                        {-
+--GAMEBOY
+-- | Loads two registers r1 and r2 with data fetched from memory using the program counter.
+ldRegRegWithData :: (Register, Register) -> (Gameboy -> Gameboy)
+ldRegRegWithData (r1, r2) = (\gb -> setRegister r1 (getMemory (getRegisters (PHI, CLO) gb) gb) gb) .
+                            incrementRegistersWithoutFlags (PHI, CLO) .
+                            (\gb -> setRegister r2 (getMemory (getRegisters (PHI, CLO) gb) gb) gb)  .
+                            incrementRegistersWithoutFlags (PHI, CLO)
 
---GAMEBOY --TODO
-ldRegData :: Register -> (Gameboy -> Gameboy)
-ldRegData r
-  | isReg16 r == True = \gb -> (setRegister (gb2 gb) r)
-    (combineEmuData (getMemory (gb2 gb) $
-                      getRegister (gb2 gb) PC) (getMemory (gb1 gb) $
-                                                 getRegister (gb1 gb) PC))
-  | otherwise = \gb -> (setRegister (gb1 gb) r) (getMemory (gb1 gb) $ getRegister (gb1 gb) PC)
-    where
-      gb1 = incrementRegister PC
-      gb2 = incrementRegister PC . gb1
+--GAMEBOY
+-- | Loads a register r with data fetched from memory using the program counter.
+ldRegWithData :: Register -> (Gameboy -> Gameboy)
+ldRegWithData r gb = (setRegister r (getMemory (getRegisters (PHI, CLO) gb1) gb1) gb1)
+    where gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
---GAMEBOY --TODO
+--GAMEBOY
+-- | Set's a flag using one of the flag constants.
+setFlag :: Word8 -> Bool -> Gameboy -> Gameboy
+setFlag w True  gb = gb & cpu . registerToLens F %~ \w8 -> w8 .|. w
+setFlag w False gb = gb & cpu . registerToLens F %~ \w8 -> w8 .&. complement w
+
+--GAMEBOY
+-- | If the byte passed in is 0 return a function setting the 0 flag appropriately.
 setZero :: Word8 -> (Gameboy -> Gameboy)
-setZero d = setFlag zeroFlag $ isZeroEmuData d
-
+setZero 0 = setFlag zeroFlag True
+setZero _ = setFlag zeroFlag False
 
 --GAMEBOY
 --TODO check logic
@@ -322,7 +324,7 @@ decrementWithFlags d f = f decrement .
     zero      = \gb -> setZero decrement gb
     halfCarry = \gb -> setHalfCarry decrement d gb
     subtractf = \gb -> setFlag subtractFlag True gb
-    
+{-
 decrementRegister :: Register -> (Gameboy -> Gameboy)
 decrementRegister r = \gb -> decrementWithFlags (getRegister gb r) (\d -> (\gb1 -> setRegister gb1 r d)) gb
 
@@ -379,9 +381,7 @@ addRegsRegsWithoutFlags (r1, r2) (r3, r4) = \gb -> setRegisters gb r1 r2 $ addEm
 
 
 
-setFlag :: Word8 -> Bool -> Gameboy -> Gameboy
-setFlag w True  gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .|. w
-setFlag w False gb = gb & cpu . registerToLens F %~ \(Eight w8) -> Eight $ w8 .&. complement w
+
 
 getFlag :: Gameboy -> Word8 -> Bool
 getFlag gb w = testBit (_eight $ getRegister gb F) (flagToInt w)
