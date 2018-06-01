@@ -711,7 +711,6 @@ stepGameboy gb = incrementRegisterWithoutFlags PC . evalInstruction gb $ fetchNe
 stepNGameboy :: Int -> (Gameboy -> Gameboy)
 stepNGameboy n = Prelude.foldl (.) id $ Prelude.replicate n stepGameboy
 
-
 loadBootRom :: Gameboy -> Gameboy
 loadBootRom gb = (\gb_ -> setMemory gb_ 0x00FF 0x50) .
                  (\gb_ -> setMemory gb_ 0x00FE 0xE0) .
