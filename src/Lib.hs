@@ -2,12 +2,13 @@
 {-# LANGUAGE BinaryLiterals #-}
 
 module Lib
-    (defaultCpu) where
+    (defaultCpu,
+    cpu) where
 
 
 import Data.Word
 import Control.Lens
-import Data.Vector as V
+import Data.Array.IO as IOA
 import Data.Bits
 import Data.Binary.Get
 import Graphics.Gloss
@@ -154,14 +155,14 @@ composeRegisterLenses (reg1, reg2) = lens getter setter
 data Memory =
   Memory
   {
-    _bytes :: V.Vector Word8
+    _bytes :: IOUArray Word16 Word8
   }
 makeLenses ''Memory
 
 --MEMORY
 -- | Default gameboy memory on startup.
-defaultMemory :: Memory
-defaultMemory = Memory $ V.replicate 0xFFFF 0x00
+defaultMemory :: IO Memory
+defaultMemory = newArray (1, 0xFFFF) 0 >>= \x -> return $ Memory x
 
 --GAMEBOY
 -- | Represents a gameboy.
@@ -175,8 +176,8 @@ makeLenses ''Gameboy
 
 --GAMEBOY
 -- | Default gameboy used on startup.
-defaultGameboy :: Gameboy
-defaultGameboy = Gameboy defaultCpu defaultMemory
+defaultGameboy :: IO Gameboy
+defaultGameboy = defaultMemory >>= \x -> return $ Gameboy defaultCpu x
 
 --GAMEBOY
 -- | Represents an instruction to the Gameboy's processor.
@@ -185,7 +186,7 @@ data Instruction =
   {
     _opcode    :: Word8,
     _name      :: String,
-    _operation :: (Gameboy -> Gameboy)
+    _operation :: (Gameboy -> IO Gameboy)
   }
 makeLenses ''Instruction
 
@@ -196,13 +197,13 @@ instance Show Instruction where
 
 --GAMEBOY
 -- | Uses 16 bit value addr to index and return an 8 bit value in memory.
-getMemory :: Word16 -> Gameboy -> Word8
-getMemory addr gb = (view (memory . bytes) gb) ! (fromIntegral addr)
+getMemory :: Word16 -> Gameboy -> IO Word8
+getMemory addr gb = readArray (view (memory . bytes) gb) addr
 
 --GAMEBOY
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
-setMemory :: Word16 -> Word8 -> Gameboy -> Gameboy
-setMemory addr d gb = over (memory . bytes) (\y -> y // [(fromIntegral addr, d)]) gb
+setMemory :: Word16 -> Word8 -> Gameboy -> IO Gameboy
+setMemory addr d gb = writeArray (view (memory . bytes) gb) addr d >>= \_ -> return $ gb
 
 --GAMEBOY
 -- | Sets the value in register r to some 8 bit value d.
@@ -231,18 +232,18 @@ ldRegWithReg dest src gb = setRegister dest (getRegister src gb) gb
 
 --GAMEBOY
 -- | Using addr as an index grabs an 8 bit value from memory and loads it into reg.
-ldRegWithMem :: Register -> Word16 -> (Gameboy -> Gameboy)
-ldRegWithMem reg addr gb = setRegister reg (getMemory addr gb) gb
+ldRegWithMem :: Register -> Word16 -> (Gameboy -> IO Gameboy)
+ldRegWithMem reg addr gb = (\mem -> return $ setRegister reg mem gb) =<< getMemory addr gb
 
 --GAMEBOY
 -- | Using the 16 bit value from the combined registers rs as an index
   -- grabs an 8 bit value from memory and loads it into r.
-ldRegWithRegRegMem :: Register -> (Register, Register) -> (Gameboy -> Gameboy)
-ldRegWithRegRegMem r rs gb = setRegister r (getMemory (getRegisters rs gb) gb) gb
+ldRegWithRegRegMem :: Register -> (Register, Register) -> (Gameboy -> IO Gameboy)
+ldRegWithRegRegMem r rs gb = (\mem -> return $ setRegister r mem gb)  =<< (getMemory (getRegisters rs gb) gb)
 
 --GAMEBOY
 -- | Using the combined register rs as an index set that location in memory to the value stored in r.
-ldMemRegRegWithReg :: (Register, Register) -> Register -> (Gameboy -> Gameboy)
+ldMemRegRegWithReg :: (Register, Register) -> Register -> (Gameboy -> IO Gameboy)
 ldMemRegRegWithReg rs r gb = setMemory (getRegisters rs gb) (getRegister r gb) gb
 
 --GAMEBOY
@@ -257,22 +258,22 @@ incrementRegistersWithoutFlags rs gb = setRegisters rs (getRegisters rs gb + 1) 
 
 --GAMEBOY
 -- | Using the 16 bit value stored in rs as an index set memory to the next byte from the program counter.
-ldMemRegRegWithData :: (Register, Register) -> (Gameboy -> Gameboy)
-ldMemRegRegWithData rs gb = setMemory (getRegisters rs gb) (getMemory (getRegisters (PHI, CLO) gb1) gb1) gb1
+ldMemRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
+ldMemRegRegWithData rs gb = join (\mem -> return $ setMemory (getRegisters rs gb) mem gb1) =<< getMemory (getRegisters (PHI, CLO) gb1) gb1
   where gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
 --GAMEBOY
 -- | Loads two registers r1 and r2 with data fetched from memory using the program counter.
-ldRegRegWithData :: (Register, Register) -> (Gameboy -> Gameboy)
-ldRegRegWithData (r1, r2) = (\gb -> setRegister r1 (getMemory (getRegisters (PHI, CLO) gb) gb) gb) .
-                            incrementRegistersWithoutFlags (PHI, CLO) .
-                            (\gb -> setRegister r2 (getMemory (getRegisters (PHI, CLO) gb) gb) gb)  .
-                            incrementRegistersWithoutFlags (PHI, CLO)
+ldRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
+ldRegRegWithData (r1, r2) gb = join . return $ (\gb1 -> (\mem -> return $ setRegister r1 mem gb1) =<< (getMemory (getRegisters (PHI, CLO) gb1) gb1)) =<<
+                               ((\gb1 -> return $ incrementRegistersWithoutFlags (PHI, CLO) gb1) =<<
+                               ((\gb1 -> (\mem -> return $ setRegister r2 mem gb1) =<< (getMemory (getRegisters (PHI, CLO) gb1) gb1)) $
+                               incrementRegistersWithoutFlags (PHI, CLO) gb))
 
 --GAMEBOY
 -- | Loads a register r with data fetched from memory using the program counter.
-ldRegWithData :: Register -> (Gameboy -> Gameboy)
-ldRegWithData r gb = (setRegister r (getMemory (getRegisters (PHI, CLO) gb1) gb1) gb1)
+ldRegWithData :: Register -> (Gameboy -> IO Gameboy)
+ldRegWithData r gb = (\mem -> return $ setRegister r mem gb1) =<< (getMemory (getRegisters (PHI, CLO) gb1) gb1)
     where gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
 --GAMEBOY
@@ -547,29 +548,32 @@ wordToSignedInt w
   | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
   | otherwise = fromIntegral w
 
-jumpRNZ :: Gameboy -> Gameboy
+jumpRNZ :: Gameboy -> IO Gameboy
 jumpRNZ gb = if getFlag gb1 zeroFlag
-             then setRegisters (PHI, CLO) (fromIntegral $ (fromIntegral $ getRegisters (PHI,CLO) gb1) + (wordToSignedInt d)) gb1
-             else gb1
+             then (\d_ -> return $ setRegisters (PHI, CLO) (fromIntegral $ (fromIntegral $ getRegisters (PHI,CLO) gb1) + (wordToSignedInt d_)) gb1) =<< d
+             else return gb1
   where
     d = getMemory (getRegisters (PHI, CLO) gb1) gb1
     gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
-ldFFRegAddrReg :: Register -> Register -> (Gameboy -> Gameboy)
+ldFFRegAddrReg :: Register -> Register -> (Gameboy -> IO Gameboy)
 ldFFRegAddrReg d s gb = setMemory (0xFF00 + (toWord16 $ getRegister d gb)) (getRegister s gb) gb
 
-ldhA :: Gameboy -> Gameboy
-ldhA gb = setMemory (0xFF00 + (toWord16 (getMemory (getRegisters (PHI,CLO) gb1) gb1))) (getRegister A gb1) gb1
+ldhA :: Gameboy -> IO Gameboy
+ldhA gb = join (\mem -> return $ setMemory (0xFF00 + (toWord16 mem)) (getRegister A gb1) gb1) =<< getMemory (getRegisters (PHI,CLO) gb1) gb1
   where
     gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
-push :: Word16 -> (Gameboy -> Gameboy)
-push d = pushByte dhi . pushByte dlo
+(.:) :: Monad m => (b -> c) -> (a -> m b) -> a -> m c
+f .: g = liftM f . g
+
+push :: Word16 -> (Gameboy -> IO Gameboy)
+push d gb = join (\gb_ -> return $ pushByte dhi gb_) =<< (pushByte dlo gb)
   where
     dhi = toWord8 $ shiftR d 8
     dlo = toWord8 $ 0x00FF .&. d
-    pushByte = \b  -> decrementRegistersWithoutFlags (SHI, PLO) .
-               \gb -> setMemory (getRegisters (SHI, PLO) gb) b gb
+    pushByte = \b  -> decrementRegistersWithoutFlags (SHI, PLO) .:
+               (\gb -> setMemory (getRegisters (SHI, PLO) gb) b gb)
 
 pop :: (Register, Register) -> (Gameboy -> Gameboy)
 pop rs gb = setRegisters rs (combineData (getMemory (getRegisters (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb)) gb)
@@ -596,7 +600,6 @@ ret gb = decrementRegistersWithoutFlags (PHI, CLO)
            (getMemory (getRegisters (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb))) gb))
          (incrementRegistersWithoutFlags (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb)))
 
---TODO This may be horribly incorrect.
 --cp :: Word8 -> (Gameboy -> Gameboy)
 --cp d = zero . halfCarry . subtractf
 --  where
@@ -605,23 +608,26 @@ ret gb = decrementRegistersWithoutFlags (PHI, CLO)
 --    halfCarry   = \gb -> setHalfCarry subtraction d gb
 --    subtractf   = \gb -> setFlag subtractFlag True gb
 
+fixGB :: (Gameboy -> Gameboy) -> (Gameboy -> IO Gameboy)
+fixGB gb = (\gb_ -> return gb_ >>= (\gb__ -> return $ gb gb__))
+
 decodeOp :: Word8 -> Instruction
-decodeOp 0x00 = Instruction 0x00 "NOP" id
+decodeOp 0x00 = Instruction 0x00 "NOP" $ \gb -> return gb
 decodeOp 0x01 = Instruction 0x01 "LD BC, d16" $ ldRegRegWithData (B, C)
 decodeOp 0x02 = Instruction 0x02 "LD (BC), A" $ ldMemRegRegWithReg (B, C) A
-decodeOp 0x03 = Instruction 0x03 "INC BC" $ incrementRegistersWithoutFlags (B, C)
-decodeOp 0x04 = Instruction 0x04 "INC B" $ incrementRegisterWithFlags B
-decodeOp 0x05 = Instruction 0x05 "DEC B" $ decrementRegisterWithFlags B
+decodeOp 0x03 = Instruction 0x03 "INC BC" $ fixGB $ incrementRegistersWithoutFlags (B, C)
+decodeOp 0x04 = Instruction 0x04 "INC B" $ fixGB $ incrementRegisterWithFlags B
+decodeOp 0x05 = Instruction 0x05 "DEC B" $ fixGB $ decrementRegisterWithFlags B
 decodeOp 0x06 = Instruction 0x06 "LD B, d8" $ ldRegWithData B
-decodeOp 0x07 = Instruction 0x07 "RLCA" rotateLeftACarry
+decodeOp 0x07 = Instruction 0x07 "RLCA" $ fixGB rotateLeftACarry
 --TODO 0x08 "LD (a16) SP"
-decodeOp 0x09 = Instruction 0x09 "ADD HL, BC" (addRegRegWithRegRegWithFlags (H, L) (B, C))
-decodeOp 0x0A = Instruction 0x0A "LD A, (BC)" (ldRegWithRegRegMem A (B, C))
-decodeOp 0x0B = Instruction 0x0B "DEC BC" (decrementRegistersWithoutFlags (B, C))
-decodeOp 0x0C = Instruction 0x0C "INC C" (incrementRegisterWithFlags C)
-decodeOp 0x0D = Instruction 0x0D "DEC C" (decrementRegisterWithFlags C)
-decodeOp 0x0E = Instruction 0x0E "LD C, d8" (ldRegWithData C)
-decodeOp 0x0F = Instruction 0x0F "RRCA" rotateRightACarry
+decodeOp 0x09 = Instruction 0x09 "ADD HL, BC" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (B, C)
+decodeOp 0x0A = Instruction 0x0A "LD A, (BC)" $ ldRegWithRegRegMem A (B, C)
+decodeOp 0x0B = Instruction 0x0B "DEC BC" $ fixGB $ decrementRegistersWithoutFlags (B, C)
+decodeOp 0x0C = Instruction 0x0C "INC C" $ fixGB $ incrementRegisterWithFlags C
+decodeOp 0x0D = Instruction 0x0D "DEC C" $ fixGB $ decrementRegisterWithFlags C
+decodeOp 0x0E = Instruction 0x0E "LD C, d8" $ ldRegWithData C
+decodeOp 0x0F = Instruction 0x0F "RRCA" $ fixGB rotateRightACarry
 --TODO 0x10 "STOP 0"
 decodeOp 0x11 = Instruction 0x11 "LD DE, d16" $ ldRegRegWithData (D, E)
 decodeOp 0x12 = Instruction 0x12 "LD (DE), A" $ ldMemRegRegWithReg (D, E) A
@@ -787,7 +793,8 @@ stepGameboy gb = incrementRegistersWithoutFlags (PHI, CLO) . evalInstruction gb 
 stepNGameboy :: Int -> (Gameboy -> Gameboy)
 stepNGameboy n = Prelude.foldl (.) id $ Prelude.replicate n stepGameboy
 
-loadBootRom :: Gameboy -> Gameboy
+{-
+loadBootRom :: Gameboy -> IO Gameboy
 loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .
                  (\gb_ -> setMemory 0x00FE 0xE0 gb_) .
                  (\gb_ -> setMemory 0x00FD 0x01 gb_) .
@@ -1044,6 +1051,6 @@ loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .
                  (\gb_ -> setMemory 0x0002 0xFF gb_) . --Good
                  (\gb_ -> setMemory 0x0001 0xFE gb_) . --Good
                  (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb --I may have a mistake here.
-
-runGameboyNSteps :: Int -> Gameboy
-runGameboyNSteps n = stepNGameboy n $ loadBootRom defaultGameboy
+-}
+--runGameboyNSteps :: Int -> Gameboy
+--runGameboyNSteps n = stepNGameboy n $ loadBootRom defaultGameboy

@@ -1,8 +1,9 @@
 module Main where
 
 import Lib
-import Graphics.Gloss
-import Graphics.Gloss.Data.Display
+import Control.Lens
 
 main :: IO ()
-main = display (InWindow "Nice Window" (400, 400) (10, 10)) white (cpuToPicture defaultCpu)
+main = putStrLn . show $ ((runGameboyNSteps 24611) ^. cpu)
+
+--getDebugView :: Gameboy -> IO ()
