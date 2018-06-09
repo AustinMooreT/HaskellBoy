@@ -3,7 +3,8 @@
 
 module Lib
     (defaultCpu,
-    cpu) where
+     runGameboyNSteps,
+     cpu) where
 
 
 import Data.Word
@@ -13,6 +14,12 @@ import Data.Bits
 import Data.Binary.Get
 import Graphics.Gloss
 import Control.Monad
+
+--ETC
+-- | Cute little operator to make my life easier.
+(.|) :: (Monad m) => (a -> m a) -> (a -> m a) -> (a -> m a)
+(.|) f2 f1 = \a -> do { evalF1 <- f1 a
+                      ; f2 evalF1}
 
 --DATA
 -- | Converts an byte to 16 bit value.
@@ -162,7 +169,7 @@ makeLenses ''Memory
 --MEMORY
 -- | Default gameboy memory on startup.
 defaultMemory :: IO Memory
-defaultMemory = newArray (1, 0xFFFF) 0 >>= \x -> return $ Memory x
+defaultMemory = newArray (0, 0xFFFF) 0 >>= \x -> return $ Memory x
 
 --GAMEBOY
 -- | Represents a gameboy.
@@ -233,13 +240,16 @@ ldRegWithReg dest src gb = setRegister dest (getRegister src gb) gb
 --GAMEBOY
 -- | Using addr as an index grabs an 8 bit value from memory and loads it into reg.
 ldRegWithMem :: Register -> Word16 -> (Gameboy -> IO Gameboy)
-ldRegWithMem reg addr gb = (\mem -> return $ setRegister reg mem gb) =<< getMemory addr gb
+ldRegWithMem reg addr gb = do { mem <- getMemory addr gb
+                              ; return $ setRegister reg mem gb }
+
 
 --GAMEBOY
 -- | Using the 16 bit value from the combined registers rs as an index
   -- grabs an 8 bit value from memory and loads it into r.
 ldRegWithRegRegMem :: Register -> (Register, Register) -> (Gameboy -> IO Gameboy)
-ldRegWithRegRegMem r rs gb = (\mem -> return $ setRegister r mem gb)  =<< (getMemory (getRegisters rs gb) gb)
+ldRegWithRegRegMem r rs gb = do { mem <- getMemory (getRegisters rs gb) gb
+                                ; return $ setRegister r mem gb}
 
 --GAMEBOY
 -- | Using the combined register rs as an index set that location in memory to the value stored in r.
@@ -259,22 +269,29 @@ incrementRegistersWithoutFlags rs gb = setRegisters rs (getRegisters rs gb + 1) 
 --GAMEBOY
 -- | Using the 16 bit value stored in rs as an index set memory to the next byte from the program counter.
 ldMemRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
-ldMemRegRegWithData rs gb = join (\mem -> return $ setMemory (getRegisters rs gb) mem gb1) =<< getMemory (getRegisters (PHI, CLO) gb1) gb1
+ldMemRegRegWithData rs gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+                               ; setMemory (getRegisters rs gb) mem gb1}
   where gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
 --GAMEBOY
 -- | Loads two registers r1 and r2 with data fetched from memory using the program counter.
 ldRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
-ldRegRegWithData (r1, r2) gb = join . return $ (\gb1 -> (\mem -> return $ setRegister r1 mem gb1) =<< (getMemory (getRegisters (PHI, CLO) gb1) gb1)) =<<
-                               ((\gb1 -> return $ incrementRegistersWithoutFlags (PHI, CLO) gb1) =<<
-                               ((\gb1 -> (\mem -> return $ setRegister r2 mem gb1) =<< (getMemory (getRegisters (PHI, CLO) gb1) gb1)) $
-                               incrementRegistersWithoutFlags (PHI, CLO) gb))
+ldRegRegWithData rs gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+                            ; mem2 <- getMemory (getRegisters (PHI, CLO) gb2) gb2
+                            ; return $ setRegisters rs (combineData mem1 mem2) gb2}
+  where
+    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
+    gb2 = incrementRegistersWithoutFlags (PHI, CLO) gb1
+
+
 
 --GAMEBOY
 -- | Loads a register r with data fetched from memory using the program counter.
 ldRegWithData :: Register -> (Gameboy -> IO Gameboy)
-ldRegWithData r gb = (\mem -> return $ setRegister r mem gb1) =<< (getMemory (getRegisters (PHI, CLO) gb1) gb1)
-    where gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
+ldRegWithData r gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+                        ; return $ setRegister r mem gb }
+  where
+    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
 --GAMEBOY
 -- | Set's a flag using one of the flag constants.
@@ -332,6 +349,22 @@ incrementWithFlags8 byte store = store increment .
     zero      = \gb -> setZero8 increment gb
     halfCarry = \gb -> setOverflowHalfCarry8 increment byte gb
     subtractf = \gb -> setFlag subtractFlag False gb
+
+--GAMEBOY
+-- | increment a byte and set all the flags associated with it.
+  -- Store is a function that will take the incremented byte and put it back in the gameboy,
+  -- and set all the associated flags at the same time.
+incrementWithFlags8IO :: Word8 -> (Word8 -> (Gameboy -> IO Gameboy)) -> (Gameboy -> IO Gameboy)
+incrementWithFlags8IO byte store = store increment .
+                                 halfCarry .
+                                 subtractf .
+                                 zero
+  where
+    increment = byte + 1
+    zero      = \gb -> setZero8 increment gb
+    halfCarry = \gb -> setOverflowHalfCarry8 increment byte gb
+    subtractf = \gb -> setFlag subtractFlag False gb
+
 
 --GAMEBOY
 -- | increment a byte and set all the flags associated with it.
@@ -395,6 +428,19 @@ decrementWithFlags8 byte store = store decrement .
 
 --GAMEBOY
 -- | Decrement byte with flags
+decrementWithFlags8IO :: Word8 -> (Word8 -> (Gameboy -> IO Gameboy)) -> (Gameboy -> IO Gameboy)
+decrementWithFlags8IO byte store = store decrement .
+                                 zero .
+                                 halfCarry .
+                                 subtractf
+  where
+    decrement = byte - 1
+    zero      = \gb -> setZero8 decrement gb
+    halfCarry = \gb -> setUnderflowHalfCarry8 decrement byte gb
+    subtractf = \gb -> setFlag subtractFlag True gb
+
+--GAMEBOY
+-- | Decrement byte with flags
 decrementWithFlags16 :: Word16 -> (Word16 -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
 decrementWithFlags16 byte store = store decrement .
                                   zero .
@@ -428,14 +474,19 @@ decrementRegistersWithoutFlags rs gb = setRegisters rs ((getRegisters rs gb) - 1
 
 --GAMEBOY
 -- | Increments a value in memory by indexing with a register pair.
-incrementMemoryRegReg :: (Register, Register) -> (Gameboy -> Gameboy)
-incrementMemoryRegReg rs gb  = incrementWithFlags8 (getMemory (getRegisters rs gb) gb)
-                               (\d -> (\gb1 -> setMemory (getRegisters rs gb1) d gb1)) gb
+incrementMemoryRegReg :: (Register, Register) -> (Gameboy -> IO Gameboy)
+incrementMemoryRegReg rs gb  = do { mem <- getMemory (getRegisters rs gb) gb
+                                  ; let incMem = incrementWithFlags8IO mem
+                                        storeMem = \d -> \gb_ -> setMemory (getRegisters rs gb_) d gb
+                                    in incMem storeMem gb }
+
 --GAMEBOY
 -- | decrement a value in memory by indexing with a register pair.
-decrementMemoryRegReg :: (Register, Register) -> (Gameboy -> Gameboy)
-decrementMemoryRegReg rs gb = decrementWithFlags8 (getMemory (getRegisters rs gb) gb)
-                              (\d -> (\gb1 -> setMemory (getRegisters rs gb1) d gb1)) gb
+decrementMemoryRegReg :: (Register, Register) -> (Gameboy -> IO Gameboy)
+decrementMemoryRegReg rs gb = do { mem <- getMemory (getRegisters rs gb) gb
+                                 ; let decMem = decrementWithFlags8IO mem
+                                       storeMem = \d -> \gb_ -> setMemory (getRegisters rs gb_) d gb_
+                                   in decMem storeMem gb }
 
 --GAMEBOY
 -- | adds e1 and e2 together and sets all apropriate flags using f to store the value back in the gameboy.
@@ -575,31 +626,36 @@ push d gb = join (\gb_ -> return $ pushByte dhi gb_) =<< (pushByte dlo gb)
     pushByte = \b  -> decrementRegistersWithoutFlags (SHI, PLO) .:
                (\gb -> setMemory (getRegisters (SHI, PLO) gb) b gb)
 
-pop :: (Register, Register) -> (Gameboy -> Gameboy)
-pop rs gb = setRegisters rs (combineData (getMemory (getRegisters (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb)) gb)
-                             (getMemory (getRegisters (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb))) gb))
-            ((incrementRegistersWithoutFlags (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb))) 
+pop :: (Register, Register) -> (Gameboy -> IO Gameboy)
+pop rs gb = do { mem1 <- getMemory (getRegisters (SHI, PLO) gb1) gb
+               ; mem2 <- getMemory (getRegisters (SHI, PLO) gb2) gb
+               ; let combinedMem = combineData mem1 mem2
+                 in return $ setRegisters rs combinedMem gb2}
+  where gb1 = incrementRegistersWithoutFlags (SHI, PLO) gb
+        gb2 = incrementRegistersWithoutFlags (SHI, PLO) gb1
 
-call :: Gameboy -> Gameboy
-call gb = decrementRegistersWithoutFlags (PHI, CLO)
-          ((\gb_ -> (setRegisters (PHI, CLO) (combineData
-                                              (getMemory (getRegisters (PHI, CLO) gb2) gb2)
-                                              (getMemory (getRegisters (PHI, CLO) gb1) gb1))) gb_) .
-           (push (getRegisters (PHI, CLO) gb3)) $ gb)
 
+
+call :: Gameboy -> IO Gameboy
+call gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+             ; mem2 <- getMemory (getRegisters (PHI, CLO) gb2) gb2
+             ; let combinedMem = combineData mem2 mem1
+               in do { pushedGb <- push (getRegisters (PHI, CLO) gb3) gb
+                     ; let setGb = setRegisters (PHI, CLO) combinedMem pushedGb
+                       in return $ decrementRegistersWithoutFlags (PHI, CLO) setGb }}
   where
     gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
     gb2 = incrementRegistersWithoutFlags (PHI, CLO) gb1
     gb3 = incrementRegistersWithoutFlags (PHI, CLO) gb2
 
-ret :: Gameboy -> Gameboy
-ret gb = decrementRegistersWithoutFlags (PHI, CLO)
-         (setRegisters (PHI, CLO)
-          (combineData
-           (getMemory (getRegisters (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb)) gb)
-           (getMemory (getRegisters (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb))) gb))
-         (incrementRegistersWithoutFlags (SHI, PLO) (incrementRegistersWithoutFlags (SHI, PLO) gb)))
-
+ret :: Gameboy -> IO Gameboy
+ret gb = do { mem1 <- getMemory (getRegisters (SHI, PLO) gb1) gb
+            ; mem2 <- getMemory (getRegisters (SHI, PLO) gb2) gb
+            ; let combinedMem = combineData mem1 mem2
+              in return $ setRegisters (PHI, CLO) combinedMem gb2 }
+   where
+     gb1 = incrementRegistersWithoutFlags (SHI, PLO) gb
+     gb2 = incrementRegistersWithoutFlags (SHI, PLO) gb1
 --cp :: Word8 -> (Gameboy -> Gameboy)
 --cp d = zero . halfCarry . subtractf
 --  where
@@ -631,41 +687,43 @@ decodeOp 0x0F = Instruction 0x0F "RRCA" $ fixGB rotateRightACarry
 --TODO 0x10 "STOP 0"
 decodeOp 0x11 = Instruction 0x11 "LD DE, d16" $ ldRegRegWithData (D, E)
 decodeOp 0x12 = Instruction 0x12 "LD (DE), A" $ ldMemRegRegWithReg (D, E) A
-decodeOp 0x13 = Instruction 0x13 "INC DE" $ incrementRegistersWithoutFlags (D, E)
-decodeOp 0x14 = Instruction 0x14 "INC D" $ incrementRegisterWithFlags D
-decodeOp 0x15 = Instruction 0x15 "DEC D" $ decrementRegisterWithFlags D
+decodeOp 0x13 = Instruction 0x13 "INC DE" $ fixGB$ incrementRegistersWithoutFlags (D, E)
+decodeOp 0x14 = Instruction 0x14 "INC D" $ fixGB $ incrementRegisterWithFlags D
+decodeOp 0x15 = Instruction 0x15 "DEC D" $ fixGB $ decrementRegisterWithFlags D
 decodeOp 0x16 = Instruction 0x16 "LD D, d8" $ ldRegWithData D
-decodeOp 0x17 = Instruction 0x17 "RLA" rotateLeftA
+decodeOp 0x17 = Instruction 0x17 "RLA" $ fixGB rotateLeftA
 --TODO 0x18 "JR r8"
-decodeOp 0x19 = Instruction 0x19 "ADD HL, DE" $ addRegRegWithRegRegWithFlags (H, L) (D, E)
+decodeOp 0x19 = Instruction 0x19 "ADD HL, DE" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (D, E)
 decodeOp 0x1A = Instruction 0x1A "LD A, (DE)" $ ldRegWithRegRegMem A (D, E)
-decodeOp 0x1B = Instruction 0x1B "DEC BC" $ decrementRegistersWithoutFlags (D, E)
-decodeOp 0x1C = Instruction 0x1C "INC E" $ incrementRegisterWithFlags E
-decodeOp 0x1D = Instruction 0x1D "DEC E" $ decrementRegisterWithFlags E
+decodeOp 0x1B = Instruction 0x1B "DEC BC" $ fixGB $ decrementRegistersWithoutFlags (D, E)
+decodeOp 0x1C = Instruction 0x1C "INC E" $ fixGB $ incrementRegisterWithFlags E
+decodeOp 0x1D = Instruction 0x1D "DEC E" $ fixGB $ decrementRegisterWithFlags E
 decodeOp 0x1E = Instruction 0x1E "LD C, d8" $ ldRegWithData C
-decodeOp 0x1F = Instruction 0x1F "RRA" rotateRightA
+decodeOp 0x1F = Instruction 0x1F "RRA" $ fixGB rotateRightA
 --TODO 0x20 "JR NZ, r8"
 decodeOp 0x20 = Instruction 0x20 "JR NZ, r8" $ jumpRNZ
 decodeOp 0x21 = Instruction 0x21 "LD HL, d16" $ ldRegRegWithData (H, L)
-decodeOp 0x22 = Instruction 0x22 "LD (HL+), A" $ incrementRegistersWithFlags (H, L) . ldMemRegRegWithReg (H, L) A
-decodeOp 0x23 = Instruction 0x23 "INC HL" $ incrementRegistersWithoutFlags (H, L)
-decodeOp 0x24 = Instruction 0x24 "INC H" $ incrementRegisterWithFlags H
-decodeOp 0x25 = Instruction 0x25 "DEC H" $ decrementRegisterWithFlags H
+decodeOp 0x22 = Instruction 0x22 "LD (HL+), A" $ \gb -> do { ldedGB <- ldMemRegRegWithReg (H, L) A gb
+                                                           ; return $ incrementRegistersWithFlags (H, L) ldedGB }
+decodeOp 0x23 = Instruction 0x23 "INC HL" $ fixGB $ incrementRegistersWithoutFlags (H, L)
+decodeOp 0x24 = Instruction 0x24 "INC H" $ fixGB $ incrementRegisterWithFlags H
+decodeOp 0x25 = Instruction 0x25 "DEC H" $ fixGB $ decrementRegisterWithFlags H
 decodeOp 0x28 = Instruction 0x26 "LD H, d8" $ ldRegWithData H
 --TODO 0x27 "DAA"
 --TODO 0x28 "JR Z, r8"
-decodeOp 0x29 = Instruction 0x29 "ADD HL, HL" $ addRegRegWithRegRegWithFlags (H, L) (H, L)
+decodeOp 0x29 = Instruction 0x29 "ADD HL, HL" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (H, L)
 --TODO 0x2A "LD A, (HL+)"
-decodeOp 0x2B = Instruction 0x2B "DEC HL" $ decrementRegistersWithoutFlags (H, L)
-decodeOp 0x2C = Instruction 0x2C "INC L" $ incrementRegisterWithFlags L
-decodeOp 0x2D = Instruction 0x2D "DEC L" $ decrementRegisterWithFlags L
+decodeOp 0x2B = Instruction 0x2B "DEC HL" $ fixGB $ decrementRegistersWithoutFlags (H, L)
+decodeOp 0x2C = Instruction 0x2C "INC L" $ fixGB $ incrementRegisterWithFlags L
+decodeOp 0x2D = Instruction 0x2D "DEC L" $ fixGB $ decrementRegisterWithFlags L
 decodeOp 0x2E = Instruction 0x2E "LD L, d8" $ ldRegWithData L
 --TODO 0x2F "CPL"
 --TODO 0x30 "JR NC, r8"
 decodeOp 0x31 = Instruction 0x31 "LD SP, d16" $ ldRegRegWithData (SHI, PLO)
 --TODO 0x32 "LD (HL-), A"
-decodeOp 0x32 = Instruction 0x32 "LD (HL-), A" $ decrementRegisters (H, L) . ldMemRegRegWithReg (H, L) A
-decodeOp 0x33 = Instruction 0x33 "INC SP" $ incrementRegistersWithoutFlags (SHI, PLO)
+decodeOp 0x32 = Instruction 0x32 "LD (HL-), A" $ \gb -> do { ldedGB <- ldMemRegRegWithReg (H, L) A gb
+                                                             ; return $ decrementRegisters (H, L) ldedGB }
+decodeOp 0x33 = Instruction 0x33 "INC SP" $ fixGB $ incrementRegistersWithoutFlags (SHI, PLO)
 decodeOp 0x34 = Instruction 0x34 "INC (HL)" $ incrementMemoryRegReg (H, L)
 decodeOp 0x35 = Instruction 0x35 "DEC (HL)" $ decrementMemoryRegReg (H, L)
 decodeOp 0x36 = Instruction 0x36 "LD (HL), d8" $ ldMemRegRegWithData (H, L)
@@ -673,59 +731,59 @@ decodeOp 0x36 = Instruction 0x36 "LD (HL), d8" $ ldMemRegRegWithData (H, L)
 --TODO 0x38 "JR C, r8"
 --TODO 0x39 "ADD HL, SP"
 --TODO 0x3A "LD A, (HL-)"
-decodeOp 0x3B = Instruction 0x3B "DEC SP" $ decrementRegistersWithoutFlags (SHI, PLO)
-decodeOp 0x3C = Instruction 0x3C "INC A" $ incrementRegisterWithFlags A
-decodeOp 0x3D = Instruction 0x3D "DEC A" $ decrementRegisterWithFlags A
+decodeOp 0x3B = Instruction 0x3B "DEC SP" $ fixGB $ decrementRegistersWithoutFlags (SHI, PLO)
+decodeOp 0x3C = Instruction 0x3C "INC A" $ fixGB $ incrementRegisterWithFlags A
+decodeOp 0x3D = Instruction 0x3D "DEC A" $ fixGB $ decrementRegisterWithFlags A
 decodeOp 0x3E = Instruction 0x3E "LD A, d8" $ ldRegWithData A
 --TODO 0x3F "CCF"
-decodeOp 0x40 = Instruction 0x40 "LD B, B" id
-decodeOp 0x41 = Instruction 0x41 "LD B, C" $ ldRegWithReg B C
-decodeOp 0x42 = Instruction 0x42 "LD B, D" $ ldRegWithReg B D
-decodeOp 0x43 = Instruction 0x43 "LD B, E" $ ldRegWithReg B E
-decodeOp 0x44 = Instruction 0x44 "LD B, H" $ ldRegWithReg B H
-decodeOp 0x45 = Instruction 0x45 "LD B, L" $ ldRegWithReg B L
+decodeOp 0x40 = Instruction 0x40 "LD B, B" $ fixGB id
+decodeOp 0x41 = Instruction 0x41 "LD B, C" $ fixGB $ ldRegWithReg B C
+decodeOp 0x42 = Instruction 0x42 "LD B, D" $ fixGB $ ldRegWithReg B D
+decodeOp 0x43 = Instruction 0x43 "LD B, E" $ fixGB $ ldRegWithReg B E
+decodeOp 0x44 = Instruction 0x44 "LD B, H" $ fixGB $ ldRegWithReg B H
+decodeOp 0x45 = Instruction 0x45 "LD B, L" $ fixGB $ ldRegWithReg B L
 decodeOp 0x46 = Instruction 0x46 "LD B, (HL)" $ ldRegWithRegRegMem B (H, L)
-decodeOp 0x47 = Instruction 0x46 "LD B, A" $ ldRegWithReg B A
-decodeOp 0x48 = Instruction 0x48 "LD C, B" $ ldRegWithReg C B
-decodeOp 0x49 = Instruction 0x49 "LD C, C" id
-decodeOp 0x4A = Instruction 0x4A "LD C, D" $ ldRegWithReg C D
-decodeOp 0x4B = Instruction 0x4B "LD C, E" $ ldRegWithReg C E
-decodeOp 0x4C = Instruction 0x4C "LD C, H" $ ldRegWithReg C H
-decodeOp 0x4D = Instruction 0x4D "LD C, L" $ ldRegWithReg C L
+decodeOp 0x47 = Instruction 0x46 "LD B, A" $ fixGB $ ldRegWithReg B A
+decodeOp 0x48 = Instruction 0x48 "LD C, B" $ fixGB $ ldRegWithReg C B
+decodeOp 0x49 = Instruction 0x49 "LD C, C" $ fixGB id
+decodeOp 0x4A = Instruction 0x4A "LD C, D" $ fixGB $ ldRegWithReg C D
+decodeOp 0x4B = Instruction 0x4B "LD C, E" $ fixGB $ ldRegWithReg C E
+decodeOp 0x4C = Instruction 0x4C "LD C, H" $ fixGB $ ldRegWithReg C H
+decodeOp 0x4D = Instruction 0x4D "LD C, L" $ fixGB $ ldRegWithReg C L
 decodeOp 0x4E = Instruction 0x4E "LD C, (HL)" $ ldRegWithRegRegMem C (H, L)
-decodeOp 0x4F = Instruction 0x4F "LD C, A" $ ldRegWithReg C A
-decodeOp 0x50 = Instruction 0x50 "LD D, B" $ ldRegWithReg D B
-decodeOp 0x51 = Instruction 0x51 "LD D, C" $ ldRegWithReg D C
-decodeOp 0x52 = Instruction 0x52 "LD D, D" id
-decodeOp 0x53 = Instruction 0x53 "LD D, E" $ ldRegWithReg D E
-decodeOp 0x54 = Instruction 0x54 "LD D, H" $ ldRegWithReg D H
-decodeOp 0x55 = Instruction 0x55 "LD D, L" $ ldRegWithReg D L
+decodeOp 0x4F = Instruction 0x4F "LD C, A" $ fixGB $ ldRegWithReg C A
+decodeOp 0x50 = Instruction 0x50 "LD D, B" $ fixGB $ ldRegWithReg D B
+decodeOp 0x51 = Instruction 0x51 "LD D, C" $ fixGB $ ldRegWithReg D C
+decodeOp 0x52 = Instruction 0x52 "LD D, D" $ fixGB id
+decodeOp 0x53 = Instruction 0x53 "LD D, E" $ fixGB $ ldRegWithReg D E
+decodeOp 0x54 = Instruction 0x54 "LD D, H" $ fixGB $ ldRegWithReg D H
+decodeOp 0x55 = Instruction 0x55 "LD D, L" $ fixGB $ ldRegWithReg D L
 decodeOp 0x56 = Instruction 0x56 "LD D, (HL)" $ ldRegWithRegRegMem D (H, L)
-decodeOp 0x57 = Instruction 0x57 "LD D, A" $ ldRegWithReg D A
-decodeOp 0x58 = Instruction 0x58 "LD E, B" $ ldRegWithReg E B
-decodeOp 0x59 = Instruction 0x59 "LD E, C" $ ldRegWithReg E C
-decodeOp 0x5A = Instruction 0x5A "LD E, D" $ ldRegWithReg E D
-decodeOp 0x5B = Instruction 0x5B "LD E, E" id
-decodeOp 0x5C = Instruction 0x5C "LD E, H" $ ldRegWithReg E H
-decodeOp 0x5D = Instruction 0x5D "LD E, L" $ ldRegWithReg E L
+decodeOp 0x57 = Instruction 0x57 "LD D, A" $ fixGB $ ldRegWithReg D A
+decodeOp 0x58 = Instruction 0x58 "LD E, B" $ fixGB $ ldRegWithReg E B
+decodeOp 0x59 = Instruction 0x59 "LD E, C" $ fixGB $ ldRegWithReg E C
+decodeOp 0x5A = Instruction 0x5A "LD E, D" $ fixGB $ ldRegWithReg E D
+decodeOp 0x5B = Instruction 0x5B "LD E, E" $ fixGB id
+decodeOp 0x5C = Instruction 0x5C "LD E, H" $ fixGB $ ldRegWithReg E H
+decodeOp 0x5D = Instruction 0x5D "LD E, L" $ fixGB $ ldRegWithReg E L
 decodeOp 0x5E = Instruction 0x5E "LD E, (HL)" $ ldRegWithRegRegMem E (H, L)
-decodeOp 0x5F = Instruction 0x5F "LD E, A" $ ldRegWithReg E A
-decodeOp 0x60 = Instruction 0x60 "LD H, B" $ ldRegWithReg H B
-decodeOp 0x61 = Instruction 0x61 "LD H, C" $ ldRegWithReg H C
-decodeOp 0x62 = Instruction 0x62 "LD H, D" $ ldRegWithReg H D
-decodeOp 0x63 = Instruction 0x63 "LD H, E" $ ldRegWithReg H E
-decodeOp 0x64 = Instruction 0x64 "LD H, H" id
-decodeOp 0x65 = Instruction 0x65 "LD H, L" $ ldRegWithReg H L
+decodeOp 0x5F = Instruction 0x5F "LD E, A" $ fixGB $ ldRegWithReg E A
+decodeOp 0x60 = Instruction 0x60 "LD H, B" $ fixGB $ ldRegWithReg H B
+decodeOp 0x61 = Instruction 0x61 "LD H, C" $ fixGB $ ldRegWithReg H C
+decodeOp 0x62 = Instruction 0x62 "LD H, D" $ fixGB $ ldRegWithReg H D
+decodeOp 0x63 = Instruction 0x63 "LD H, E" $ fixGB $ ldRegWithReg H E
+decodeOp 0x64 = Instruction 0x64 "LD H, H" $ fixGB id
+decodeOp 0x65 = Instruction 0x65 "LD H, L" $ fixGB $ ldRegWithReg H L
 decodeOp 0x66 = Instruction 0x66 "LD H, (HL)" $ ldRegWithRegRegMem H (H, L)
-decodeOp 0x67 = Instruction 0x67 "LD H, A" $ ldRegWithReg H A
-decodeOp 0x68 = Instruction 0x68 "LD L, B" $ ldRegWithReg L B
-decodeOp 0x69 = Instruction 0x69 "LD L, C" $ ldRegWithReg L C
-decodeOp 0x6A = Instruction 0x6A "LD L, D" $ ldRegWithReg L D
-decodeOp 0x6B = Instruction 0x6B "LD L, E" $ ldRegWithReg L E
-decodeOp 0x6C = Instruction 0x6C "LD L, H" $ ldRegWithReg L H
-decodeOp 0x6D = Instruction 0x6D "LD L, L" id
+decodeOp 0x67 = Instruction 0x67 "LD H, A" $ fixGB $ ldRegWithReg H A
+decodeOp 0x68 = Instruction 0x68 "LD L, B" $ fixGB $ ldRegWithReg L B
+decodeOp 0x69 = Instruction 0x69 "LD L, C" $ fixGB $ ldRegWithReg L C
+decodeOp 0x6A = Instruction 0x6A "LD L, D" $ fixGB $ ldRegWithReg L D
+decodeOp 0x6B = Instruction 0x6B "LD L, E" $ fixGB $ ldRegWithReg L E
+decodeOp 0x6C = Instruction 0x6C "LD L, H" $ fixGB $ ldRegWithReg L H
+decodeOp 0x6D = Instruction 0x6D "LD L, L" $ fixGB id
 decodeOp 0x6E = Instruction 0x6E "LD L, (HL)" $ ldRegWithRegRegMem L (H, L)
-decodeOp 0x6F = Instruction 0x6F "LD L, A" $ ldRegWithReg L A
+decodeOp 0x6F = Instruction 0x6F "LD L, A" $ fixGB $ ldRegWithReg L A
 decodeOp 0x70 = Instruction 0x70 "LD (HL) B" $ ldMemRegRegWithReg (H, L) B
 decodeOp 0x71 = Instruction 0x71 "LD (HL) C" $ ldMemRegRegWithReg (H, L) C
 decodeOp 0x72 = Instruction 0x72 "LD (HL) D" $ ldMemRegRegWithReg (H, L) D
@@ -734,30 +792,30 @@ decodeOp 0x74 = Instruction 0x74 "LD (HL) H" $ ldMemRegRegWithReg (H, L) H
 decodeOp 0x75 = Instruction 0x75 "LD (HL) L" $ ldMemRegRegWithReg (H, L) L
 --TODO 0x76 "HALT"
 decodeOp 0x77 = Instruction 0x77 "LD (HL) A" $ ldMemRegRegWithReg (H, L) A
-decodeOp 0x78 = Instruction 0x78 "LD A B" $ ldRegWithReg A B
-decodeOp 0x79 = Instruction 0x79 "LD A C" $ ldRegWithReg A C
-decodeOp 0x7A = Instruction 0x7A "LD A D" $ ldRegWithReg A D
-decodeOp 0x7B = Instruction 0x7B "LD A E" $ ldRegWithReg A E
-decodeOp 0x7C = Instruction 0x7C "LD A H" $ ldRegWithReg A H
-decodeOp 0x7D = Instruction 0x7D "LD A L" $ ldRegWithReg A L
+decodeOp 0x78 = Instruction 0x78 "LD A B" $ fixGB $ ldRegWithReg A B
+decodeOp 0x79 = Instruction 0x79 "LD A C" $ fixGB $ ldRegWithReg A C
+decodeOp 0x7A = Instruction 0x7A "LD A D" $ fixGB $ ldRegWithReg A D
+decodeOp 0x7B = Instruction 0x7B "LD A E" $ fixGB $ ldRegWithReg A E
+decodeOp 0x7C = Instruction 0x7C "LD A H" $ fixGB $ ldRegWithReg A H
+decodeOp 0x7D = Instruction 0x7D "LD A L" $ fixGB $ ldRegWithReg A L
 decodeOp 0x7E = Instruction 0x7E "LD A (HL)" $ ldRegWithRegRegMem A (H, L)
-decodeOp 0x7F = Instruction 0x7F "LD A A" id
-decodeOp 0x80 = Instruction 0x80 "ADD A, B" $ addRegWithRegWithFlags A B
-decodeOp 0x81 = Instruction 0x81 "ADD A, C" $ addRegWithRegWithFlags A C
-decodeOp 0x82 = Instruction 0x82 "ADD A, D" $ addRegWithRegWithFlags A D
-decodeOp 0x83 = Instruction 0x83 "ADD A, E" $ addRegWithRegWithFlags A E
-decodeOp 0x84 = Instruction 0x84 "ADD A, H" $ addRegWithRegWithFlags A H
-decodeOp 0x85 = Instruction 0x85 "ADD A, L" $ addRegWithRegWithFlags A L
+decodeOp 0x7F = Instruction 0x7F "LD A A" $ fixGB id
+decodeOp 0x80 = Instruction 0x80 "ADD A, B" $ fixGB $ addRegWithRegWithFlags A B
+decodeOp 0x81 = Instruction 0x81 "ADD A, C" $ fixGB $ addRegWithRegWithFlags A C
+decodeOp 0x82 = Instruction 0x82 "ADD A, D" $ fixGB $ addRegWithRegWithFlags A D
+decodeOp 0x83 = Instruction 0x83 "ADD A, E" $ fixGB $ addRegWithRegWithFlags A E
+decodeOp 0x84 = Instruction 0x84 "ADD A, H" $ fixGB $ addRegWithRegWithFlags A H
+decodeOp 0x85 = Instruction 0x85 "ADD A, L" $ fixGB $ addRegWithRegWithFlags A L
 --TODO 0x86 "ADD A, (HL)"
-decodeOp 0x87 = Instruction 0x87 "ADD A, A" $ addRegWithRegWithFlags A A
+decodeOp 0x87 = Instruction 0x87 "ADD A, A" $ fixGB $ addRegWithRegWithFlags A A
 --TODO 0x88 - 0xAE
-decodeOp 0xAF = Instruction 0xAF "XOR A" $ xorReg A
+decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xCA
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" $ pop (B, C)
 decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" $ \gb -> push (getRegisters (B, C) gb) gb
 decodeOp 0xC9 = Instruction 0xC9 "RET" $ ret
-decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" $ \gb -> (decodeCb $ fetchCb $ incrementRegistersWithoutFlags (PHI, CLO) gb)
-                                                                             $ incrementRegistersWithoutFlags (PHI,CLO) gb
+decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" $ \gb -> do { cb <- fetchCb $ incrementRegistersWithoutFlags (PHI, CLO) gb
+                                                                ; return $ decodeCb cb (incrementRegistersWithoutFlags (PHI,CLO) gb)}
 --TODO 0xCC
 decodeOp 0xCD = Instruction 0xCD "CALL a8" $ call
 decodeOp 0xE0 = Instruction 0xE0 "LD (a8), A" $ ldhA
@@ -766,7 +824,7 @@ decodeOp 0xE2 = Instruction 0xE2 "LD (C), A" $ ldFFRegAddrReg C A
 --TODO 0xE3 - 0xFF
 
 
-fetchCb :: Gameboy -> Word8
+fetchCb :: Gameboy -> IO Word8
 fetchCb gb = getMemory (getRegisters (PHI, CLO) gb) gb
 
 testBitReg :: Register -> Int -> (Gameboy -> Gameboy)
@@ -781,276 +839,283 @@ decodeCb :: Word8 -> (Gameboy -> Gameboy)
 decodeCb 0x7C = testBitReg H 7
 decodeCb 0x11 = rotateLeft C
 
-evalInstruction :: Gameboy -> Instruction -> Gameboy
+evalInstruction :: Gameboy -> Instruction -> IO Gameboy
 evalInstruction gb inst = gb & inst ^. operation
 
-fetchNextInstr :: Gameboy -> Instruction
-fetchNextInstr gb = decodeOp $ getMemory (getRegisters (PHI, CLO) gb) gb
+fetchNextInstr :: Gameboy -> IO Instruction
+fetchNextInstr gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb) gb
+                       ; return $ decodeOp mem }
 
-stepGameboy :: Gameboy -> Gameboy
-stepGameboy gb = incrementRegistersWithoutFlags (PHI, CLO) . evalInstruction gb $ fetchNextInstr gb
+stepGameboy :: Gameboy -> IO Gameboy
+stepGameboy gb = do { instr <- fetchNextInstr gb
+                    ; evGB  <- evalInstruction gb instr
+                    ; return $ gb1 evGB }
+  where gb1 = incrementRegistersWithoutFlags (PHI, CLO)
 
-stepNGameboy :: Int -> (Gameboy -> Gameboy)
-stepNGameboy n = Prelude.foldl (.) id $ Prelude.replicate n stepGameboy
+-- (.) :: (b -> c) -> (a -> b) -> (a -> c)
 
-{-
+
+stepNGameboy :: Int -> (Gameboy -> IO Gameboy)
+stepNGameboy n = Prelude.foldl (.|) (fixGB id) $ Prelude.replicate n stepGameboy
+
 loadBootRom :: Gameboy -> IO Gameboy
-loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .
-                 (\gb_ -> setMemory 0x00FE 0xE0 gb_) .
-                 (\gb_ -> setMemory 0x00FD 0x01 gb_) .
-                 (\gb_ -> setMemory 0x00FC 0x3E gb_) .
-                 (\gb_ -> setMemory 0x00FB 0xFE gb_) .
-                 (\gb_ -> setMemory 0x00FA 0x20 gb_) .
-                 (\gb_ -> setMemory 0x00F9 0x86 gb_) .
-                 (\gb_ -> setMemory 0x00F8 0xFB gb_) .
-                 (\gb_ -> setMemory 0x00F7 0x20 gb_) .
-                 (\gb_ -> setMemory 0x00F6 0x05 gb_) .
-                 (\gb_ -> setMemory 0x00F5 0x23 gb_) .
-                 (\gb_ -> setMemory 0x00F4 0x86 gb_) .
-                 (\gb_ -> setMemory 0x00F3 0x78 gb_) .
-                 (\gb_ -> setMemory 0x00F2 0x19 gb_) .
-                 (\gb_ -> setMemory 0x00F1 0x06 gb_) .
-                 (\gb_ -> setMemory 0x00F0 0xF5 gb_) .
-                 (\gb_ -> setMemory 0x00EF 0x20 gb_) .
-                 (\gb_ -> setMemory 0x00EE 0x34 gb_) .
-                 (\gb_ -> setMemory 0x00ED 0xFE gb_) .
-                 (\gb_ -> setMemory 0x00EC 0x7D gb_) .
-                 (\gb_ -> setMemory 0x00EB 0x23 gb_) .
-                 (\gb_ -> setMemory 0x00EA 0xFE gb_) .
-                 (\gb_ -> setMemory 0x00E9 0x20 gb_) .
-                 (\gb_ -> setMemory 0x00E8 0xBE gb_) .
-                 (\gb_ -> setMemory 0x00E7 0x13 gb_) .
-                 (\gb_ -> setMemory 0x00E6 0x1A gb_) .
-                 (\gb_ -> setMemory 0x00E5 0x00 gb_) .
-                 (\gb_ -> setMemory 0x00E4 0xA8 gb_) .
-                 (\gb_ -> setMemory 0x00E3 0x11 gb_) .
-                 (\gb_ -> setMemory 0x00E2 0x01 gb_) .
-                 (\gb_ -> setMemory 0x00E1 0x04 gb_) .
-                 (\gb_ -> setMemory 0x00E0 0x21 gb_) .
-                 (\gb_ -> setMemory 0x00DF 0x3C gb_) .
-                 (\gb_ -> setMemory 0x00DE 0x42 gb_) .
-                 (\gb_ -> setMemory 0x00DD 0xA5 gb_) .
-                 (\gb_ -> setMemory 0x00DC 0xB9 gb_) .
-                 (\gb_ -> setMemory 0x00DB 0xA5 gb_) .
-                 (\gb_ -> setMemory 0x00DA 0xB9 gb_) .
-                 (\gb_ -> setMemory 0x00D9 0x42 gb_) .
-                 (\gb_ -> setMemory 0x00D8 0x3C gb_) .
-                 (\gb_ -> setMemory 0x00D7 0x3E gb_) .
-                 (\gb_ -> setMemory 0x00D6 0x33 gb_) .
-                 (\gb_ -> setMemory 0x00D5 0xB9 gb_) .
-                 (\gb_ -> setMemory 0x00D4 0xBB gb_) .
-                 (\gb_ -> setMemory 0x00D3 0x9F gb_) .
-                 (\gb_ -> setMemory 0x00D2 0x99 gb_) .
-                 (\gb_ -> setMemory 0x00D1 0xDC gb_) .
-                 (\gb_ -> setMemory 0x00D0 0xDD gb_) .
-                 (\gb_ -> setMemory 0x00CF 0xCC gb_) .
-                 (\gb_ -> setMemory 0x00CE 0xEC gb_) .
-                 (\gb_ -> setMemory 0x00CD 0x0E gb_) .
-                 (\gb_ -> setMemory 0x00CC 0x6E gb_) .
-                 (\gb_ -> setMemory 0x00CB 0x63 gb_) .
-                 (\gb_ -> setMemory 0x00CA 0x67 gb_) .
-                 (\gb_ -> setMemory 0x00C9 0xBB gb_) .
-                 (\gb_ -> setMemory 0x00C8 0xBB gb_) .
-                 (\gb_ -> setMemory 0x00C7 0x99 gb_) .
-                 (\gb_ -> setMemory 0x00C6 0xD9 gb_) .
-                 (\gb_ -> setMemory 0x00C5 0xDD gb_) .
-                 (\gb_ -> setMemory 0x00C4 0xDD gb_) .
-                 (\gb_ -> setMemory 0x00C3 0xE6 gb_) .
-                 (\gb_ -> setMemory 0x00C2 0x6E gb_) .
-                 (\gb_ -> setMemory 0x00C1 0xCC gb_) .
-                 (\gb_ -> setMemory 0x00C0 0xDC gb_) .
-                 (\gb_ -> setMemory 0x00BF 0x0E gb_) .
-                 (\gb_ -> setMemory 0x00BE 0x00 gb_) .
-                 (\gb_ -> setMemory 0x00BD 0x89 gb_) .
-                 (\gb_ -> setMemory 0x00BC 0x88 gb_) .
-                 (\gb_ -> setMemory 0x00BB 0x1F gb_) .
-                 (\gb_ -> setMemory 0x00BA 0x11 gb_) .
-                 (\gb_ -> setMemory 0x00B9 0x08 gb_) .
-                 (\gb_ -> setMemory 0x00B8 0x00 gb_) .
-                 (\gb_ -> setMemory 0x00B7 0x0D gb_) .
-                 (\gb_ -> setMemory 0x00B6 0x00 gb_) .
-                 (\gb_ -> setMemory 0x00B5 0x0C gb_) .
-                 (\gb_ -> setMemory 0x00B4 0x00 gb_) .
-                 (\gb_ -> setMemory 0x00B3 0x83 gb_) .
-                 (\gb_ -> setMemory 0x00B2 0x00 gb_) .
-                 (\gb_ -> setMemory 0x00B1 0x73 gb_) .
-                 (\gb_ -> setMemory 0x00B0 0x03 gb_) .
-                 (\gb_ -> setMemory 0x00AF 0x0B gb_) .
-                 (\gb_ -> setMemory 0x00AE 0x00 gb_) .
-                 (\gb_ -> setMemory 0x00AD 0x0D gb_) .
-                 (\gb_ -> setMemory 0x00AC 0xCC gb_) .
-                 (\gb_ -> setMemory 0x00AB 0x66 gb_) .
-                 (\gb_ -> setMemory 0x00AA 0x66 gb_) .
-                 (\gb_ -> setMemory 0x00A9 0xED gb_) .
-                 (\gb_ -> setMemory 0x00A8 0xCE gb_) .
-                 (\gb_ -> setMemory 0x00A7 0xC9 gb_) .
-                 (\gb_ -> setMemory 0x00A6 0x23 gb_) . --Good
-                 (\gb_ -> setMemory 0x00A5 0x22 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x00A4 0x23 gb_) . --Good
-                 (\gb_ -> setMemory 0x00A3 0x22 gb_) . --24607 Maybe Good
-                 (\gb_ -> setMemory 0x00A2 0xF5 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x00A1 0x20 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x00A0 0x05 gb_) . --Good
-                 (\gb_ -> setMemory 0x009F 0x17 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x009E 0x11 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x009D 0xCB gb_) . --Good
-                 (\gb_ -> setMemory 0x009C 0xC1 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x009B 0x17 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x009A 0x11 gb_) . --24600 Maybe Good
-                 (\gb_ -> setMemory 0x0099 0xCB gb_) . --Good
-                 (\gb_ -> setMemory 0x0098 0xC5 gb_) . --Good
-                 (\gb_ -> setMemory 0x0097 0x04 gb_) . --Good
-                 (\gb_ -> setMemory 0x0096 0x06 gb_) . --Good
-                 (\gb_ -> setMemory 0x0095 0x4F gb_) . --Good
-                 (\gb_ -> setMemory 0x0094 0xCB gb_) .
-                 (\gb_ -> setMemory 0x0093 0x18 gb_) .
-                 (\gb_ -> setMemory 0x0092 0x20 gb_) .
-                 (\gb_ -> setMemory 0x0091 0x16 gb_) .
-                 (\gb_ -> setMemory 0x0090 0x4F gb_) .
-                 (\gb_ -> setMemory 0x008F 0x20 gb_) .
-                 (\gb_ -> setMemory 0x008E 0x05 gb_) .
-                 (\gb_ -> setMemory 0x008D 0xD2 gb_) .
-                 (\gb_ -> setMemory 0x008C 0x20 gb_) .
-                 (\gb_ -> setMemory 0x008B 0x15 gb_) .
-                 (\gb_ -> setMemory 0x008A 0x42 gb_) .
-                 (\gb_ -> setMemory 0x0089 0xE0 gb_) .
-                 (\gb_ -> setMemory 0x0088 0x90 gb_) .
-                 (\gb_ -> setMemory 0x0087 0x42 gb_) .
-                 (\gb_ -> setMemory 0x0086 0xF0 gb_) .
-                 (\gb_ -> setMemory 0x0085 0xE2 gb_) .
-                 (\gb_ -> setMemory 0x0084 0x87 gb_) .
-                 (\gb_ -> setMemory 0x0083 0x3E gb_) .
-                 (\gb_ -> setMemory 0x0082 0x0C gb_) .
-                 (\gb_ -> setMemory 0x0081 0xE2 gb_) .
-                 (\gb_ -> setMemory 0x0080 0x7B gb_) .
-                 (\gb_ -> setMemory 0x007F 0x06 gb_) .
-                 (\gb_ -> setMemory 0x007E 0x20 gb_) .
-                 (\gb_ -> setMemory 0x007D 0x64 gb_) .
-                 (\gb_ -> setMemory 0x007C 0xFE gb_) .
-                 (\gb_ -> setMemory 0x007B 0xC1 gb_) .
-                 (\gb_ -> setMemory 0x007A 0x1E gb_) .
-                 (\gb_ -> setMemory 0x0079 0x06 gb_) .
-                 (\gb_ -> setMemory 0x0078 0x28 gb_) .
-                 (\gb_ -> setMemory 0x0077 0x62 gb_) .
-                 (\gb_ -> setMemory 0x0076 0xFE gb_) .
-                 (\gb_ -> setMemory 0x0075 0x83 gb_) .
-                 (\gb_ -> setMemory 0x0074 0x1E gb_) .
-                 (\gb_ -> setMemory 0x0073 0x7C gb_) .
-                 (\gb_ -> setMemory 0x0072 0x24 gb_) .
-                 (\gb_ -> setMemory 0x0071 0x13 gb_) .
-                 (\gb_ -> setMemory 0x0070 0x0E gb_) .
-                 (\gb_ -> setMemory 0x006F 0xF2 gb_) .
-                 (\gb_ -> setMemory 0x006E 0x20 gb_) .
-                 (\gb_ -> setMemory 0x006D 0x1D gb_) .
-                 (\gb_ -> setMemory 0x006C 0xF7 gb_) .
-                 (\gb_ -> setMemory 0x006B 0x20 gb_) .
-                 (\gb_ -> setMemory 0x006A 0x0D gb_) .
-                 (\gb_ -> setMemory 0x0069 0xFA gb_) .
-                 (\gb_ -> setMemory 0x0068 0x20 gb_) .
-                 (\gb_ -> setMemory 0x0067 0x90 gb_) .
-                 (\gb_ -> setMemory 0x0066 0xFE gb_) .
-                 (\gb_ -> setMemory 0x0065 0x44 gb_) .
-                 (\gb_ -> setMemory 0x0064 0xF0 gb_) .
-                 (\gb_ -> setMemory 0x0063 0x0C gb_) .
-                 (\gb_ -> setMemory 0x0062 0x0E gb_) .
-                 (\gb_ -> setMemory 0x0061 0x02 gb_) .
-                 (\gb_ -> setMemory 0x0060 0x1E gb_) .
-                 (\gb_ -> setMemory 0x005F 0x04 gb_) .
-                 (\gb_ -> setMemory 0x005E 0x40 gb_) .
-                 (\gb_ -> setMemory 0x005D 0xE0 gb_) .
-                 (\gb_ -> setMemory 0x005C 0x91 gb_) .
-                 (\gb_ -> setMemory 0x005B 0x3E gb_) .
-                 (\gb_ -> setMemory 0x005A 0x42 gb_) .
-                 (\gb_ -> setMemory 0x0059 0xE0 gb_) .
-                 (\gb_ -> setMemory 0x0058 0x57 gb_) .
-                 (\gb_ -> setMemory 0x0057 0x64 gb_) .
-                 (\gb_ -> setMemory 0x0056 0x3E gb_) .
-                 (\gb_ -> setMemory 0x0055 0x67 gb_) .
-                 (\gb_ -> setMemory 0x0054 0xF3 gb_) .
-                 (\gb_ -> setMemory 0x0053 0x18 gb_) .
-                 (\gb_ -> setMemory 0x0052 0x0F gb_) .
-                 (\gb_ -> setMemory 0x0051 0x2E gb_) .
-                 (\gb_ -> setMemory 0x0050 0xF9 gb_) .
-                 (\gb_ -> setMemory 0x004F 0x20 gb_) .
-                 (\gb_ -> setMemory 0x004E 0x0D gb_) .
-                 (\gb_ -> setMemory 0x004D 0x32 gb_) .
-                 (\gb_ -> setMemory 0x004C 0x08 gb_) .
-                 (\gb_ -> setMemory 0x004B 0x28 gb_) .
-                 (\gb_ -> setMemory 0x004A 0x3D gb_) .
-                 (\gb_ -> setMemory 0x0049 0x0C gb_) .
-                 (\gb_ -> setMemory 0x0048 0x0E gb_) .
-                 (\gb_ -> setMemory 0x0047 0x99 gb_) .
-                 (\gb_ -> setMemory 0x0046 0x2F gb_) .
-                 (\gb_ -> setMemory 0x0045 0x21 gb_) .
-                 (\gb_ -> setMemory 0x0044 0x99 gb_) .
-                 (\gb_ -> setMemory 0x0043 0x10 gb_) .
-                 (\gb_ -> setMemory 0x0042 0xEA gb_) .
-                 (\gb_ -> setMemory 0x0041 0x19 gb_) .
-                 (\gb_ -> setMemory 0x0040 0x3E gb_) .
-                 (\gb_ -> setMemory 0x003F 0xF9 gb_) .
-                 (\gb_ -> setMemory 0x003E 0x20 gb_) .
-                 (\gb_ -> setMemory 0x003D 0x05 gb_) .
-                 (\gb_ -> setMemory 0x003C 0x23 gb_) .
-                 (\gb_ -> setMemory 0x003B 0x22 gb_) .
-                 (\gb_ -> setMemory 0x003A 0x13 gb_) .
-                 (\gb_ -> setMemory 0x0039 0x1A gb_) .
-                 (\gb_ -> setMemory 0x0038 0x08 gb_) .
-                 (\gb_ -> setMemory 0x0037 0x06 gb_) .
-                 (\gb_ -> setMemory 0x0036 0x00 gb_) .
-                 (\gb_ -> setMemory 0x0035 0xD8 gb_) .
-                 (\gb_ -> setMemory 0x0034 0x11 gb_) .
-                 (\gb_ -> setMemory 0x0033 0xF3 gb_) .
-                 (\gb_ -> setMemory 0x0032 0x20 gb_) .
-                 (\gb_ -> setMemory 0x0031 0x34 gb_) .
-                 (\gb_ -> setMemory 0x0030 0xFE gb_) . 
-                 (\gb_ -> setMemory 0x002F 0x7B gb_) . --Good
-                 (\gb_ -> setMemory 0x002E 0x13 gb_) . --Good
-                 (\gb_ -> setMemory 0x002D 0x00 gb_) . --Good
-                 (\gb_ -> setMemory 0x002C 0x96 gb_) . --Good
-                 (\gb_ -> setMemory 0x002B 0xCD gb_) . --24611 should put PC here. : Maybe Good
-                 (\gb_ -> setMemory 0x002A 0x00 gb_) . --Good
-                 (\gb_ -> setMemory 0x0029 0x95 gb_) . --Good
-                 (\gb_ -> setMemory 0x0028 0xCD gb_) . --24596 Maybe Good
-                 (\gb_ -> setMemory 0x0027 0x1A gb_) . --Good
-                 (\gb_ -> setMemory 0x0026 0x80 gb_) . --Good
-                 (\gb_ -> setMemory 0x0025 0x10 gb_) . --Good
-                 (\gb_ -> setMemory 0x0024 0x21 gb_) . --Good
-                 (\gb_ -> setMemory 0x0023 0x01 gb_) . --Good
-                 (\gb_ -> setMemory 0x0022 0x04 gb_) . --Good
-                 (\gb_ -> setMemory 0x0021 0x11 gb_) . --Good
-                 (\gb_ -> setMemory 0x0020 0x47 gb_) . --Good
-                 (\gb_ -> setMemory 0x001F 0xE0 gb_) . --Good
-                 (\gb_ -> setMemory 0x001E 0xFC gb_) . --Good
-                 (\gb_ -> setMemory 0x001D 0x3E gb_) . --Good
-                 (\gb_ -> setMemory 0x001C 0x77 gb_) . --Maybe Good 24590 steps
-                 (\gb_ -> setMemory 0x001B 0x77 gb_) . --Good
-                 (\gb_ -> setMemory 0x001A 0x3E gb_) . --Good
-                 (\gb_ -> setMemory 0x0019 0x32 gb_) . --Good
-                 (\gb_ -> setMemory 0x0018 0xE2 gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x0017 0xF3 gb_) . --Good
-                 (\gb_ -> setMemory 0x0016 0x3E gb_) . --Good
-                 (\gb_ -> setMemory 0x0015 0x0C gb_) . --Good
-                 (\gb_ -> setMemory 0x0014 0xE2 gb_) . -- 24584 steps : Maybe Good
-                 (\gb_ -> setMemory 0x0013 0x32 gb_) . --Good
-                 (\gb_ -> setMemory 0x0012 0x80 gb_) . --Good
-                 (\gb_ -> setMemory 0x0011 0x3E gb_) . --Good
-                 (\gb_ -> setMemory 0x0010 0x11 gb_) . --Good
-                 (\gb_ -> setMemory 0x000F 0x0E gb_) . --Good
-                 (\gb_ -> setMemory 0x000E 0xFF gb_) . --Good
-                 (\gb_ -> setMemory 0x000D 0x26 gb_) . --Good
-                 (\gb_ -> setMemory 0x000C 0x21 gb_) . --Good
-                 (\gb_ -> setMemory 0x000B 0xFB gb_) . --Good
-                 (\gb_ -> setMemory 0x000A 0x20 gb_) . --Must run 24578 steps to get to this opcode : Maybe Good
-                 (\gb_ -> setMemory 0x0009 0x7C gb_) . --Maybe Good
-                 (\gb_ -> setMemory 0x0008 0xCB gb_) . --Good
-                 (\gb_ -> setMemory 0x0007 0x32 gb_) . --Good
-                 (\gb_ -> setMemory 0x0006 0x9F gb_) . --Good
-                 (\gb_ -> setMemory 0x0005 0xFF gb_) . --Good
-                 (\gb_ -> setMemory 0x0004 0x21 gb_) . --Good
-                 (\gb_ -> setMemory 0x0003 0xAF gb_) . --Good
-                 (\gb_ -> setMemory 0x0002 0xFF gb_) . --Good
-                 (\gb_ -> setMemory 0x0001 0xFE gb_) . --Good
+loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
+                 (\gb_ -> setMemory 0x00FE 0xE0 gb_) .|
+                 (\gb_ -> setMemory 0x00FD 0x01 gb_) .|
+                 (\gb_ -> setMemory 0x00FC 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x00FB 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x00FA 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x00F9 0x86 gb_) .|
+                 (\gb_ -> setMemory 0x00F8 0xFB gb_) .|
+                 (\gb_ -> setMemory 0x00F7 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x00F6 0x05 gb_) .|
+                 (\gb_ -> setMemory 0x00F5 0x23 gb_) .|
+                 (\gb_ -> setMemory 0x00F4 0x86 gb_) .|
+                 (\gb_ -> setMemory 0x00F3 0x78 gb_) .|
+                 (\gb_ -> setMemory 0x00F2 0x19 gb_) .|
+                 (\gb_ -> setMemory 0x00F1 0x06 gb_) .|
+                 (\gb_ -> setMemory 0x00F0 0xF5 gb_) .|
+                 (\gb_ -> setMemory 0x00EF 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x00EE 0x34 gb_) .|
+                 (\gb_ -> setMemory 0x00ED 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x00EC 0x7D gb_) .|
+                 (\gb_ -> setMemory 0x00EB 0x23 gb_) .|
+                 (\gb_ -> setMemory 0x00EA 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x00E9 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x00E8 0xBE gb_) .|
+                 (\gb_ -> setMemory 0x00E7 0x13 gb_) .|
+                 (\gb_ -> setMemory 0x00E6 0x1A gb_) .|
+                 (\gb_ -> setMemory 0x00E5 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x00E4 0xA8 gb_) .|
+                 (\gb_ -> setMemory 0x00E3 0x11 gb_) .|
+                 (\gb_ -> setMemory 0x00E2 0x01 gb_) .|
+                 (\gb_ -> setMemory 0x00E1 0x04 gb_) .|
+                 (\gb_ -> setMemory 0x00E0 0x21 gb_) .|
+                 (\gb_ -> setMemory 0x00DF 0x3C gb_) .|
+                 (\gb_ -> setMemory 0x00DE 0x42 gb_) .|
+                 (\gb_ -> setMemory 0x00DD 0xA5 gb_) .|
+                 (\gb_ -> setMemory 0x00DC 0xB9 gb_) .|
+                 (\gb_ -> setMemory 0x00DB 0xA5 gb_) .|
+                 (\gb_ -> setMemory 0x00DA 0xB9 gb_) .|
+                 (\gb_ -> setMemory 0x00D9 0x42 gb_) .|
+                 (\gb_ -> setMemory 0x00D8 0x3C gb_) .|
+                 (\gb_ -> setMemory 0x00D7 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x00D6 0x33 gb_) .|
+                 (\gb_ -> setMemory 0x00D5 0xB9 gb_) .|
+                 (\gb_ -> setMemory 0x00D4 0xBB gb_) .|
+                 (\gb_ -> setMemory 0x00D3 0x9F gb_) .|
+                 (\gb_ -> setMemory 0x00D2 0x99 gb_) .|
+                 (\gb_ -> setMemory 0x00D1 0xDC gb_) .|
+                 (\gb_ -> setMemory 0x00D0 0xDD gb_) .|
+                 (\gb_ -> setMemory 0x00CF 0xCC gb_) .|
+                 (\gb_ -> setMemory 0x00CE 0xEC gb_) .|
+                 (\gb_ -> setMemory 0x00CD 0x0E gb_) .|
+                 (\gb_ -> setMemory 0x00CC 0x6E gb_) .|
+                 (\gb_ -> setMemory 0x00CB 0x63 gb_) .|
+                 (\gb_ -> setMemory 0x00CA 0x67 gb_) .|
+                 (\gb_ -> setMemory 0x00C9 0xBB gb_) .|
+                 (\gb_ -> setMemory 0x00C8 0xBB gb_) .|
+                 (\gb_ -> setMemory 0x00C7 0x99 gb_) .|
+                 (\gb_ -> setMemory 0x00C6 0xD9 gb_) .|
+                 (\gb_ -> setMemory 0x00C5 0xDD gb_) .|
+                 (\gb_ -> setMemory 0x00C4 0xDD gb_) .|
+                 (\gb_ -> setMemory 0x00C3 0xE6 gb_) .|
+                 (\gb_ -> setMemory 0x00C2 0x6E gb_) .|
+                 (\gb_ -> setMemory 0x00C1 0xCC gb_) .|
+                 (\gb_ -> setMemory 0x00C0 0xDC gb_) .|
+                 (\gb_ -> setMemory 0x00BF 0x0E gb_) .|
+                 (\gb_ -> setMemory 0x00BE 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x00BD 0x89 gb_) .|
+                 (\gb_ -> setMemory 0x00BC 0x88 gb_) .|
+                 (\gb_ -> setMemory 0x00BB 0x1F gb_) .|
+                 (\gb_ -> setMemory 0x00BA 0x11 gb_) .|
+                 (\gb_ -> setMemory 0x00B9 0x08 gb_) .|
+                 (\gb_ -> setMemory 0x00B8 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x00B7 0x0D gb_) .|
+                 (\gb_ -> setMemory 0x00B6 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x00B5 0x0C gb_) .|
+                 (\gb_ -> setMemory 0x00B4 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x00B3 0x83 gb_) .|
+                 (\gb_ -> setMemory 0x00B2 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x00B1 0x73 gb_) .|
+                 (\gb_ -> setMemory 0x00B0 0x03 gb_) .|
+                 (\gb_ -> setMemory 0x00AF 0x0B gb_) .|
+                 (\gb_ -> setMemory 0x00AE 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x00AD 0x0D gb_) .|
+                 (\gb_ -> setMemory 0x00AC 0xCC gb_) .|
+                 (\gb_ -> setMemory 0x00AB 0x66 gb_) .|
+                 (\gb_ -> setMemory 0x00AA 0x66 gb_) .|
+                 (\gb_ -> setMemory 0x00A9 0xED gb_) .|
+                 (\gb_ -> setMemory 0x00A8 0xCE gb_) .|
+                 (\gb_ -> setMemory 0x00A7 0xC9 gb_) .|
+                 (\gb_ -> setMemory 0x00A6 0x23 gb_) .| --Good
+                 (\gb_ -> setMemory 0x00A5 0x22 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x00A4 0x23 gb_) .| --Good
+                 (\gb_ -> setMemory 0x00A3 0x22 gb_) .| --24607 Maybe Good
+                 (\gb_ -> setMemory 0x00A2 0xF5 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x00A1 0x20 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x00A0 0x05 gb_) .| --Good
+                 (\gb_ -> setMemory 0x009F 0x17 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x009E 0x11 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x009D 0xCB gb_) .| --Good
+                 (\gb_ -> setMemory 0x009C 0xC1 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x009B 0x17 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x009A 0x11 gb_) .| --24600 Maybe Good
+                 (\gb_ -> setMemory 0x0099 0xCB gb_) .| --Good
+                 (\gb_ -> setMemory 0x0098 0xC5 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0097 0x04 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0096 0x06 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0095 0x4F gb_) .| --Good
+                 (\gb_ -> setMemory 0x0094 0xCB gb_) .|
+                 (\gb_ -> setMemory 0x0093 0x18 gb_) .|
+                 (\gb_ -> setMemory 0x0092 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x0091 0x16 gb_) .|
+                 (\gb_ -> setMemory 0x0090 0x4F gb_) .|
+                 (\gb_ -> setMemory 0x008F 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x008E 0x05 gb_) .|
+                 (\gb_ -> setMemory 0x008D 0xD2 gb_) .|
+                 (\gb_ -> setMemory 0x008C 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x008B 0x15 gb_) .|
+                 (\gb_ -> setMemory 0x008A 0x42 gb_) .|
+                 (\gb_ -> setMemory 0x0089 0xE0 gb_) .|
+                 (\gb_ -> setMemory 0x0088 0x90 gb_) .|
+                 (\gb_ -> setMemory 0x0087 0x42 gb_) .|
+                 (\gb_ -> setMemory 0x0086 0xF0 gb_) .|
+                 (\gb_ -> setMemory 0x0085 0xE2 gb_) .|
+                 (\gb_ -> setMemory 0x0084 0x87 gb_) .|
+                 (\gb_ -> setMemory 0x0083 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x0082 0x0C gb_) .|
+                 (\gb_ -> setMemory 0x0081 0xE2 gb_) .|
+                 (\gb_ -> setMemory 0x0080 0x7B gb_) .|
+                 (\gb_ -> setMemory 0x007F 0x06 gb_) .|
+                 (\gb_ -> setMemory 0x007E 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x007D 0x64 gb_) .|
+                 (\gb_ -> setMemory 0x007C 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x007B 0xC1 gb_) .|
+                 (\gb_ -> setMemory 0x007A 0x1E gb_) .|
+                 (\gb_ -> setMemory 0x0079 0x06 gb_) .|
+                 (\gb_ -> setMemory 0x0078 0x28 gb_) .|
+                 (\gb_ -> setMemory 0x0077 0x62 gb_) .|
+                 (\gb_ -> setMemory 0x0076 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x0075 0x83 gb_) .|
+                 (\gb_ -> setMemory 0x0074 0x1E gb_) .|
+                 (\gb_ -> setMemory 0x0073 0x7C gb_) .|
+                 (\gb_ -> setMemory 0x0072 0x24 gb_) .|
+                 (\gb_ -> setMemory 0x0071 0x13 gb_) .|
+                 (\gb_ -> setMemory 0x0070 0x0E gb_) .|
+                 (\gb_ -> setMemory 0x006F 0xF2 gb_) .|
+                 (\gb_ -> setMemory 0x006E 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x006D 0x1D gb_) .|
+                 (\gb_ -> setMemory 0x006C 0xF7 gb_) .|
+                 (\gb_ -> setMemory 0x006B 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x006A 0x0D gb_) .|
+                 (\gb_ -> setMemory 0x0069 0xFA gb_) .|
+                 (\gb_ -> setMemory 0x0068 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x0067 0x90 gb_) .|
+                 (\gb_ -> setMemory 0x0066 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x0065 0x44 gb_) .|
+                 (\gb_ -> setMemory 0x0064 0xF0 gb_) .|
+                 (\gb_ -> setMemory 0x0063 0x0C gb_) .|
+                 (\gb_ -> setMemory 0x0062 0x0E gb_) .|
+                 (\gb_ -> setMemory 0x0061 0x02 gb_) .|
+                 (\gb_ -> setMemory 0x0060 0x1E gb_) .|
+                 (\gb_ -> setMemory 0x005F 0x04 gb_) .|
+                 (\gb_ -> setMemory 0x005E 0x40 gb_) .|
+                 (\gb_ -> setMemory 0x005D 0xE0 gb_) .|
+                 (\gb_ -> setMemory 0x005C 0x91 gb_) .|
+                 (\gb_ -> setMemory 0x005B 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x005A 0x42 gb_) .|
+                 (\gb_ -> setMemory 0x0059 0xE0 gb_) .|
+                 (\gb_ -> setMemory 0x0058 0x57 gb_) .|
+                 (\gb_ -> setMemory 0x0057 0x64 gb_) .|
+                 (\gb_ -> setMemory 0x0056 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x0055 0x67 gb_) .|
+                 (\gb_ -> setMemory 0x0054 0xF3 gb_) .|
+                 (\gb_ -> setMemory 0x0053 0x18 gb_) .|
+                 (\gb_ -> setMemory 0x0052 0x0F gb_) .|
+                 (\gb_ -> setMemory 0x0051 0x2E gb_) .|
+                 (\gb_ -> setMemory 0x0050 0xF9 gb_) .|
+                 (\gb_ -> setMemory 0x004F 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x004E 0x0D gb_) .|
+                 (\gb_ -> setMemory 0x004D 0x32 gb_) .|
+                 (\gb_ -> setMemory 0x004C 0x08 gb_) .|
+                 (\gb_ -> setMemory 0x004B 0x28 gb_) .|
+                 (\gb_ -> setMemory 0x004A 0x3D gb_) .|
+                 (\gb_ -> setMemory 0x0049 0x0C gb_) .|
+                 (\gb_ -> setMemory 0x0048 0x0E gb_) .|
+                 (\gb_ -> setMemory 0x0047 0x99 gb_) .|
+                 (\gb_ -> setMemory 0x0046 0x2F gb_) .|
+                 (\gb_ -> setMemory 0x0045 0x21 gb_) .|
+                 (\gb_ -> setMemory 0x0044 0x99 gb_) .|
+                 (\gb_ -> setMemory 0x0043 0x10 gb_) .|
+                 (\gb_ -> setMemory 0x0042 0xEA gb_) .|
+                 (\gb_ -> setMemory 0x0041 0x19 gb_) .|
+                 (\gb_ -> setMemory 0x0040 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x003F 0xF9 gb_) .|
+                 (\gb_ -> setMemory 0x003E 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x003D 0x05 gb_) .|
+                 (\gb_ -> setMemory 0x003C 0x23 gb_) .|
+                 (\gb_ -> setMemory 0x003B 0x22 gb_) .|
+                 (\gb_ -> setMemory 0x003A 0x13 gb_) .|
+                 (\gb_ -> setMemory 0x0039 0x1A gb_) .|
+                 (\gb_ -> setMemory 0x0038 0x08 gb_) .|
+                 (\gb_ -> setMemory 0x0037 0x06 gb_) .|
+                 (\gb_ -> setMemory 0x0036 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x0035 0xD8 gb_) .|
+                 (\gb_ -> setMemory 0x0034 0x11 gb_) .|
+                 (\gb_ -> setMemory 0x0033 0xF3 gb_) .|
+                 (\gb_ -> setMemory 0x0032 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x0031 0x34 gb_) .|
+                 (\gb_ -> setMemory 0x0030 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x002F 0x7B gb_) .| --Good
+                 (\gb_ -> setMemory 0x002E 0x13 gb_) .| --Good
+                 (\gb_ -> setMemory 0x002D 0x00 gb_) .| --Good
+                 (\gb_ -> setMemory 0x002C 0x96 gb_) .| --Good
+                 (\gb_ -> setMemory 0x002B 0xCD gb_) .| --24611 should put PC here. : Maybe Good
+                 (\gb_ -> setMemory 0x002A 0x00 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0029 0x95 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0028 0xCD gb_) .| --24596 Maybe Good
+                 (\gb_ -> setMemory 0x0027 0x1A gb_) .| --Good
+                 (\gb_ -> setMemory 0x0026 0x80 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0025 0x10 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0024 0x21 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0023 0x01 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0022 0x04 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0021 0x11 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0020 0x47 gb_) .| --Good
+                 (\gb_ -> setMemory 0x001F 0xE0 gb_) .| --Good
+                 (\gb_ -> setMemory 0x001E 0xFC gb_) .| --Good
+                 (\gb_ -> setMemory 0x001D 0x3E gb_) .| --Good
+                 (\gb_ -> setMemory 0x001C 0x77 gb_) .| --Maybe Good 24590 steps
+                 (\gb_ -> setMemory 0x001B 0x77 gb_) .| --Good
+                 (\gb_ -> setMemory 0x001A 0x3E gb_) .| --Good
+                 (\gb_ -> setMemory 0x0019 0x32 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0018 0xE2 gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x0017 0xF3 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0016 0x3E gb_) .| --Good
+                 (\gb_ -> setMemory 0x0015 0x0C gb_) .| --Good
+                 (\gb_ -> setMemory 0x0014 0xE2 gb_) .| -- 24584 steps : Maybe Good
+                 (\gb_ -> setMemory 0x0013 0x32 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0012 0x80 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0011 0x3E gb_) .| --Good
+                 (\gb_ -> setMemory 0x0010 0x11 gb_) .| --Good
+                 (\gb_ -> setMemory 0x000F 0x0E gb_) .| --Good
+                 (\gb_ -> setMemory 0x000E 0xFF gb_) .| --Good
+                 (\gb_ -> setMemory 0x000D 0x26 gb_) .| --Good
+                 (\gb_ -> setMemory 0x000C 0x21 gb_) .| --Good
+                 (\gb_ -> setMemory 0x000B 0xFB gb_) .| --Good
+                 (\gb_ -> setMemory 0x000A 0x20 gb_) .| --Must run 24578 steps to get to this opcode : Maybe Good
+                 (\gb_ -> setMemory 0x0009 0x7C gb_) .| --Maybe Good
+                 (\gb_ -> setMemory 0x0008 0xCB gb_) .| --Good
+                 (\gb_ -> setMemory 0x0007 0x32 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0006 0x9F gb_) .| --Good
+                 (\gb_ -> setMemory 0x0005 0xFF gb_) .| --Good
+                 (\gb_ -> setMemory 0x0004 0x21 gb_) .| --Good
+                 (\gb_ -> setMemory 0x0003 0xAF gb_) .| --Good
+                 (\gb_ -> setMemory 0x0002 0xFF gb_) .| --Good
+                 (\gb_ -> setMemory 0x0001 0xFE gb_) .| --Good
                  (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb --I may have a mistake here.
--}
---runGameboyNSteps :: Int -> Gameboy
---runGameboyNSteps n = stepNGameboy n $ loadBootRom defaultGameboy
+
+runGameboyNSteps :: Int -> IO Gameboy
+runGameboyNSteps n = do {dfGB <- defaultGameboy
+                        ; stepNGameboy n dfGB}

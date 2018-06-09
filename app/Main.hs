@@ -4,6 +4,6 @@ import Lib
 import Control.Lens
 
 main :: IO ()
-main = putStrLn . show $ ((runGameboyNSteps 24611) ^. cpu)
-
---getDebugView :: Gameboy -> IO ()
+main = do { gb <- runGameboyNSteps 24611
+          ; let cpu_ = gb ^. cpu
+            in putStrLn . show $ cpu_ }
