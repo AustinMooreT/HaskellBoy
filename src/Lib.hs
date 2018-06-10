@@ -1,10 +1,15 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Lib
     (defaultCpu,
      runGameboyNSteps,
-     cpu) where
+     stepNGameboy,
+     cpu,
+     Gameboy,
+     prettyPrintGb) where
 
 
 import Data.Word
@@ -14,6 +19,8 @@ import Data.Bits
 import Data.Binary.Get
 import Graphics.Gloss
 import Control.Monad
+import System.Console.ANSI as A
+import Numeric (showHex)
 
 --ETC
 -- | Cute little operator to make my life easier.
@@ -169,7 +176,8 @@ makeLenses ''Memory
 --MEMORY
 -- | Default gameboy memory on startup.
 defaultMemory :: IO Memory
-defaultMemory = newArray (0, 0xFFFF) 0 >>= \x -> return $ Memory x
+defaultMemory = do { mem <- (newArray (0, 0xFFFF) 0)
+                   ; return $ Memory mem }
 
 --GAMEBOY
 -- | Represents a gameboy.
@@ -184,7 +192,8 @@ makeLenses ''Gameboy
 --GAMEBOY
 -- | Default gameboy used on startup.
 defaultGameboy :: IO Gameboy
-defaultGameboy = defaultMemory >>= \x -> return $ Gameboy defaultCpu x
+defaultGameboy = do { mem <- defaultMemory
+                    ; return $ Gameboy defaultCpu mem }
 
 --GAMEBOY
 -- | Represents an instruction to the Gameboy's processor.
@@ -205,12 +214,16 @@ instance Show Instruction where
 --GAMEBOY
 -- | Uses 16 bit value addr to index and return an 8 bit value in memory.
 getMemory :: Word16 -> Gameboy -> IO Word8
-getMemory addr gb = readArray (view (memory . bytes) gb) addr
+getMemory addr gb = let mem = view (memory . bytes) gb
+                    in readArray mem addr
 
 --GAMEBOY
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
 setMemory :: Word16 -> Word8 -> Gameboy -> IO Gameboy
-setMemory addr d gb = writeArray (view (memory . bytes) gb) addr d >>= \_ -> return $ gb
+setMemory addr d gb = do { written <- (writeArray mem addr d)
+                         ; return $ gb & memory .~ (Memory mem)}
+  where
+    mem = view (memory . bytes) gb
 
 --GAMEBOY
 -- | Sets the value in register r to some 8 bit value d.
@@ -278,7 +291,7 @@ ldMemRegRegWithData rs gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) 
 ldRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
 ldRegRegWithData rs gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb1
                             ; mem2 <- getMemory (getRegisters (PHI, CLO) gb2) gb2
-                            ; return $ setRegisters rs (combineData mem1 mem2) gb2}
+                            ; return $ setRegisters rs (combineData mem2 mem1) gb2}
   where
     gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
     gb2 = incrementRegistersWithoutFlags (PHI, CLO) gb1
@@ -1117,5 +1130,92 @@ loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb --I may have a mistake here.
 
 runGameboyNSteps :: Int -> IO Gameboy
-runGameboyNSteps n = do {dfGB <- defaultGameboy
-                        ; stepNGameboy n dfGB}
+runGameboyNSteps n = do { gb   <- defaultGameboy
+                        ; boot <- loadBootRom gb
+                        ; stepNGameboy n boot }
+
+
+
+regToDoc :: Register -> String
+regToDoc A   = "A"
+regToDoc B   = "B"
+regToDoc C   = "C"
+regToDoc D   = "D"
+regToDoc E   = "E"
+regToDoc F   = "F"
+regToDoc H   = "H"
+regToDoc L   = "L"
+regToDoc SHI = "S"
+regToDoc PLO = "P"
+regToDoc PHI = "P"
+regToDoc CLO = "C"
+
+regRegToDoc :: (Register, Register) -> String
+regRegToDoc (r1, r2) = regToDoc r1 ++ regToDoc r2
+
+data PrintRegister =
+  PrintRegister
+  {
+    _printRegName  :: String,
+    _printRegValue :: String,
+    _printRegColor :: A.Color
+  } | PrintRegNone
+makeLenses ''PrintRegister
+
+prettyPrintReg :: Register -> Cpu -> PrintRegister
+prettyPrintReg reg cpu_ = PrintRegister (regToDoc reg) (valStr ++ (replicate (4 - (length valStr)) ' ')) A.White
+  where valStr = showHex (cpu_ ^. (registerToLens reg)) ""
+prettyPrintRegReg :: (Register, Register) -> Cpu -> PrintRegister
+prettyPrintRegReg rs cpu_ = PrintRegister (regRegToDoc rs) (valStr ++ (replicate (5 - (length valStr)) ' ')) A.White
+  where valStr = showHex (cpu_ ^. (composeRegisterLenses rs)) ""
+
+evalPrintRegisters :: [PrintRegister] -> IO ()
+evalPrintRegisters xs = putStrLn (fst str) >> putStrLn (snd str)
+  where
+    str = foldl (\(n1, v1) -> \(n2, v2) ->
+                    (n1 ++ "   |" ++ n2, v1 ++ "|" ++ v2))
+          (head mapped) (tail mapped)
+    mapped = (map (\x -> (x ^. printRegName, x ^. printRegValue)) xs)
+
+prettyPrintCpu :: Cpu -> IO ()
+prettyPrintCpu cpu_ = evalPrintRegisters [(prettyPrintReg A cpu_),
+                                          (prettyPrintReg B cpu_),
+                                          (prettyPrintReg C cpu_),
+                                          (prettyPrintReg D cpu_),
+                                          (prettyPrintReg E cpu_),
+                                          (prettyPrintReg F cpu_),
+                                          (prettyPrintReg H cpu_),
+                                          (prettyPrintReg L cpu_),
+                                          (prettyPrintRegReg (H,L) cpu_),
+                                          (prettyPrintRegReg (SHI,PLO) cpu_),
+                                          (prettyPrintRegReg (PHI,CLO) cpu_)]
+
+prettyPrintLineOfMemory :: Word16 -> Gameboy -> IO String
+prettyPrintLineOfMemory addr gb = do { mem <- getMemory addr gb
+                                     ; return ((replicate (4 - (length (showHex addr ""))) ' ') ++
+                                                (showHex addr "") ++
+                                                " : " ++ (showHex mem "")) }
+
+prettyPrintMemory :: Word16 -> Gameboy -> [IO String]
+prettyPrintMemory addr gb = (map (\x -> (prettyPrintLineOfMemory x gb) >>=
+                                        (\x -> return $ x ++ "    ")) (lower)) ++
+                            [(prettyPrintLineOfMemory addr gb) >>=
+                             (\x -> return $ x ++ " <--")] ++
+                            (map (\x -> (prettyPrintLineOfMemory x gb) >>=
+                                        (\x -> return $ x ++ "   ")) (higher))
+
+  where addrs  = [1 .. 5]
+        lower  = map (addr-) (reverse addrs)
+        higher = map (addr+) addrs
+
+testMem :: [IO String] -> IO ()
+testMem x = do { strs   <- sequence x
+               ; print_ <- foldl (>>) (return ())
+                           (map (\x -> putStrLn x) strs)
+               ; return print_ }
+
+prettyPrintGb :: IO Gameboy -> IO ()
+prettyPrintGb igb = do { gb <- igb
+                       ; let pCpu = prettyPrintCpu (gb ^. cpu)
+                             pMem = testMem $ prettyPrintMemory (getRegisters (PHI, CLO) gb) gb
+                         in putStr "\ESC[2J" >> pCpu >> putStrLn "" >> pMem }
