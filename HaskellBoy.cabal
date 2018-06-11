@@ -51,7 +51,7 @@ executable HaskellBoy-exe
       Paths_HaskellBoy
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
                 HaskellBoy
               , base >=4.7 && <5
@@ -73,7 +73,7 @@ test-suite HaskellBoy-test
       Paths_HaskellBoy
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
                 HaskellBoy
               , base >=4.7 && <5

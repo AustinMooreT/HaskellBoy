@@ -145,6 +145,7 @@ registerToFunc CLO  = _registerC_lo
 registerToLens :: Functor f => Register -> (Word8 -> f Word8) -> Cpu -> f Cpu
 registerToLens A    = registerA
 registerToLens B    = registerB
+
 registerToLens C    = registerC
 registerToLens D    = registerD
 registerToLens E    = registerE
@@ -302,7 +303,7 @@ ldRegRegWithData rs gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb
 -- | Loads a register r with data fetched from memory using the program counter.
 ldRegWithData :: Register -> (Gameboy -> IO Gameboy)
 ldRegWithData r gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
-                        ; return $ setRegister r mem gb }
+                        ; return $ setRegister r mem gb1 }
   where
     gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
@@ -612,6 +613,7 @@ wordToSignedInt w
   | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
   | otherwise = fromIntegral w
 
+--TODO clean this up.
 jumpRNZ :: Gameboy -> IO Gameboy
 jumpRNZ gb = if getFlag gb1 zeroFlag
              then (\d_ -> return $ setRegisters (PHI, CLO) (fromIntegral $ (fromIntegral $ getRegisters (PHI,CLO) gb1) + (wordToSignedInt d_)) gb1) =<< d
@@ -648,7 +650,7 @@ pop rs gb = do { mem1 <- getMemory (getRegisters (SHI, PLO) gb1) gb
         gb2 = incrementRegistersWithoutFlags (SHI, PLO) gb1
 
 
-
+--TODO Combine emu data makes me very uncomfortable here. I'm doing something wrong.
 call :: Gameboy -> IO Gameboy
 call gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb1
              ; mem2 <- getMemory (getRegisters (PHI, CLO) gb2) gb2
@@ -665,17 +667,35 @@ ret :: Gameboy -> IO Gameboy
 ret gb = do { mem1 <- getMemory (getRegisters (SHI, PLO) gb1) gb
             ; mem2 <- getMemory (getRegisters (SHI, PLO) gb2) gb
             ; let combinedMem = combineData mem1 mem2
-              in return $ setRegisters (PHI, CLO) combinedMem gb2 }
+              in return $ setRegisters (PHI, CLO) (combinedMem - 1) gb2 }
    where
      gb1 = incrementRegistersWithoutFlags (SHI, PLO) gb
      gb2 = incrementRegistersWithoutFlags (SHI, PLO) gb1
---cp :: Word8 -> (Gameboy -> Gameboy)
---cp d = zero . halfCarry . subtractf
+
+--TODO double check logic
+ldMemDataWithRegReg :: (Register, Register) -> (Gameboy -> IO Gameboy)
+ldMemDataWithRegReg (r1, r2) gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+                                     ; mem2 <- getMemory (getRegisters (PHI, CLO) gb2) gb2
+                                     ; let combinedMem = combineData mem1 mem2
+                                       in  do { gbMem1 <- setMemory combinedMem (getRegister r2 gb2) gb2
+                                              ; setMemory (combinedMem + 1) (getRegister r1 gbMem1) gbMem1 }}
+  where
+    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
+    gb2 = incrementRegistersWithoutFlags (PHI, CLO) gb1
+
+jrData :: (Gameboy -> IO Gameboy)
+jrData gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+               ; let signedJmp = wordToSignedInt mem
+                 in return $ setRegisters (PHI, CLO)
+                    (fromIntegral ((fromIntegral $ getRegisters (PHI, CLO) gb1) + signedJmp)) gb1}
+  where
+    gb1 = incrementRegistersWithoutFlags (CLO, PHI) gb
+
+--cp :: Gameboy -> IO Gameboy
+--cp gb = do { byte <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+--           ;  }
 --  where
---   subtraction = \gb -> (_eight $ getRegister A gb) - d
---    zero        = \gb -> setZero subtraction gb
---    halfCarry   = \gb -> setHalfCarry subtraction d gb
---    subtractf   = \gb -> setFlag subtractFlag True gb
+--    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
 fixGB :: (Gameboy -> Gameboy) -> (Gameboy -> IO Gameboy)
 fixGB gb = (\gb_ -> return gb_ >>= (\gb__ -> return $ gb gb__))
@@ -689,7 +709,7 @@ decodeOp 0x04 = Instruction 0x04 "INC B" $ fixGB $ incrementRegisterWithFlags B
 decodeOp 0x05 = Instruction 0x05 "DEC B" $ fixGB $ decrementRegisterWithFlags B
 decodeOp 0x06 = Instruction 0x06 "LD B, d8" $ ldRegWithData B
 decodeOp 0x07 = Instruction 0x07 "RLCA" $ fixGB rotateLeftACarry
---TODO 0x08 "LD (a16) SP"
+decodeOp 0x08 = Instruction 0x08 "LD (a16), SP" $ ldMemDataWithRegReg (SHI, PLO)
 decodeOp 0x09 = Instruction 0x09 "ADD HL, BC" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (B, C)
 decodeOp 0x0A = Instruction 0x0A "LD A, (BC)" $ ldRegWithRegRegMem A (B, C)
 decodeOp 0x0B = Instruction 0x0B "DEC BC" $ fixGB $ decrementRegistersWithoutFlags (B, C)
@@ -705,7 +725,7 @@ decodeOp 0x14 = Instruction 0x14 "INC D" $ fixGB $ incrementRegisterWithFlags D
 decodeOp 0x15 = Instruction 0x15 "DEC D" $ fixGB $ decrementRegisterWithFlags D
 decodeOp 0x16 = Instruction 0x16 "LD D, d8" $ ldRegWithData D
 decodeOp 0x17 = Instruction 0x17 "RLA" $ fixGB rotateLeftA
---TODO 0x18 "JR r8"
+decodeOp 0x18 = Instruction 0x18 "JR r8" jrData
 decodeOp 0x19 = Instruction 0x19 "ADD HL, DE" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (D, E)
 decodeOp 0x1A = Instruction 0x1A "LD A, (DE)" $ ldRegWithRegRegMem A (D, E)
 decodeOp 0x1B = Instruction 0x1B "DEC BC" $ fixGB $ decrementRegistersWithoutFlags (D, E)
@@ -713,11 +733,10 @@ decodeOp 0x1C = Instruction 0x1C "INC E" $ fixGB $ incrementRegisterWithFlags E
 decodeOp 0x1D = Instruction 0x1D "DEC E" $ fixGB $ decrementRegisterWithFlags E
 decodeOp 0x1E = Instruction 0x1E "LD C, d8" $ ldRegWithData C
 decodeOp 0x1F = Instruction 0x1F "RRA" $ fixGB rotateRightA
---TODO 0x20 "JR NZ, r8"
 decodeOp 0x20 = Instruction 0x20 "JR NZ, r8" $ jumpRNZ
 decodeOp 0x21 = Instruction 0x21 "LD HL, d16" $ ldRegRegWithData (H, L)
 decodeOp 0x22 = Instruction 0x22 "LD (HL+), A" $ \gb -> do { ldedGB <- ldMemRegRegWithReg (H, L) A gb
-                                                           ; return $ incrementRegistersWithFlags (H, L) ldedGB }
+                                                           ; return $ incrementRegistersWithoutFlags (H, L) ldedGB }
 decodeOp 0x23 = Instruction 0x23 "INC HL" $ fixGB $ incrementRegistersWithoutFlags (H, L)
 decodeOp 0x24 = Instruction 0x24 "INC H" $ fixGB $ incrementRegisterWithFlags H
 decodeOp 0x25 = Instruction 0x25 "DEC H" $ fixGB $ decrementRegisterWithFlags H
@@ -733,9 +752,8 @@ decodeOp 0x2E = Instruction 0x2E "LD L, d8" $ ldRegWithData L
 --TODO 0x2F "CPL"
 --TODO 0x30 "JR NC, r8"
 decodeOp 0x31 = Instruction 0x31 "LD SP, d16" $ ldRegRegWithData (SHI, PLO)
---TODO 0x32 "LD (HL-), A"
 decodeOp 0x32 = Instruction 0x32 "LD (HL-), A" $ \gb -> do { ldedGB <- ldMemRegRegWithReg (H, L) A gb
-                                                             ; return $ decrementRegisters (H, L) ldedGB }
+                                                           ; return $ decrementRegistersWithoutFlags (H, L) ldedGB }
 decodeOp 0x33 = Instruction 0x33 "INC SP" $ fixGB $ incrementRegistersWithoutFlags (SHI, PLO)
 decodeOp 0x34 = Instruction 0x34 "INC (HL)" $ incrementMemoryRegReg (H, L)
 decodeOp 0x35 = Instruction 0x35 "DEC (HL)" $ decrementMemoryRegReg (H, L)
@@ -823,14 +841,16 @@ decodeOp 0x85 = Instruction 0x85 "ADD A, L" $ fixGB $ addRegWithRegWithFlags A L
 decodeOp 0x87 = Instruction 0x87 "ADD A, A" $ fixGB $ addRegWithRegWithFlags A A
 --TODO 0x88 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
---TODO 0xB0 - 0xCA
+--TODO 0xB0 - 0xC0
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" $ pop (B, C)
 decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" $ \gb -> push (getRegisters (B, C) gb) gb
 decodeOp 0xC9 = Instruction 0xC9 "RET" $ ret
+--TODO 0xCA
 decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" $ \gb -> do { cb <- fetchCb $ incrementRegistersWithoutFlags (PHI, CLO) gb
                                                                 ; return $ decodeCb cb (incrementRegistersWithoutFlags (PHI,CLO) gb)}
 --TODO 0xCC
 decodeOp 0xCD = Instruction 0xCD "CALL a8" $ call
+--TODO 0xCE - 0xDF
 decodeOp 0xE0 = Instruction 0xE0 "LD (a8), A" $ ldhA
 --TODO 0xE1
 decodeOp 0xE2 = Instruction 0xE2 "LD (C), A" $ ldFFRegAddrReg C A
@@ -1080,7 +1100,7 @@ loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x0032 0x20 gb_) .|
                  (\gb_ -> setMemory 0x0031 0x34 gb_) .|
                  (\gb_ -> setMemory 0x0030 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x002F 0x7B gb_) .| --Good
+                 (\gb_ -> setMemory 0x002F 0x7B gb_) .| --Good 24628
                  (\gb_ -> setMemory 0x002E 0x13 gb_) .| --Good
                  (\gb_ -> setMemory 0x002D 0x00 gb_) .| --Good
                  (\gb_ -> setMemory 0x002C 0x96 gb_) .| --Good
@@ -1196,26 +1216,35 @@ prettyPrintLineOfMemory addr gb = do { mem <- getMemory addr gb
                                                 (showHex addr "") ++
                                                 " : " ++ (showHex mem "")) }
 
-prettyPrintMemory :: Word16 -> Gameboy -> [IO String]
-prettyPrintMemory addr gb = (map (\x -> (prettyPrintLineOfMemory x gb) >>=
-                                        (\x -> return $ x ++ "    ")) (lower)) ++
-                            [(prettyPrintLineOfMemory addr gb) >>=
-                             (\x -> return $ x ++ " <--")] ++
-                            (map (\x -> (prettyPrintLineOfMemory x gb) >>=
-                                        (\x -> return $ x ++ "   ")) (higher))
-
+prettyPrintMem :: Word16 -> Gameboy -> [IO String]
+prettyPrintMem addr gb = let printaddr = \addr_ -> prettyPrintLineOfMemory addr_ gb
+                         in map printaddr $ lower ++ [addr] ++ higher
   where addrs  = [1 .. 5]
         lower  = map (addr-) (reverse addrs)
         higher = map (addr+) addrs
 
-testMem :: [IO String] -> IO ()
-testMem x = do { strs   <- sequence x
-               ; print_ <- foldl (>>) (return ())
-                           (map (\x -> putStrLn x) strs)
-               ; return print_ }
+attachTagsPC :: Gameboy -> [IO String] -> [IO String]
+attachTagsPC gb strs =  let tagSurround = \istr -> do { str <- istr
+                                                   ; return $ str ++ (replicate 25 ' ') }
+                            tagMain     = \istr -> do { str <- istr
+                                                      ; instr <- fetchNextInstr gb
+                                                      ; let instrText = instr ^. name
+                                                        in return $ str ++
+                                                           " <-- " ++
+                                                           instrText ++
+                                                           (replicate (21 - (length instrText)) ' ') }
+                        in (map tagSurround (take 5 strs)) ++
+                           (map tagMain (take 1 . drop 5 $ strs)) ++
+                           (map tagSurround (drop 6 strs))
+
+testMem :: Gameboy -> [IO String] -> IO ()
+testMem gb x = do { strs <- sequence (attachTagsPC gb x)
+                  ; print_ <- foldl (>>) (return ())
+                              (map (\x -> putStrLn x) strs)
+                  ; return print_ }
 
 prettyPrintGb :: IO Gameboy -> IO ()
 prettyPrintGb igb = do { gb <- igb
                        ; let pCpu = prettyPrintCpu (gb ^. cpu)
-                             pMem = testMem $ prettyPrintMemory (getRegisters (PHI, CLO) gb) gb
+                             pMem = testMem gb (prettyPrintMem (getRegisters (PHI, CLO) gb) gb)
                          in putStr "\ESC[2J" >> pCpu >> putStrLn "" >> pMem }
