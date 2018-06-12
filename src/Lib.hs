@@ -9,7 +9,8 @@ module Lib
      stepNGameboy,
      cpu,
      Gameboy,
-     prettyPrintGb) where
+     prettyPrintGb,
+     debugMode) where
 
 
 import Data.Word
@@ -691,6 +692,21 @@ jrData gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
   where
     gb1 = incrementRegistersWithoutFlags (CLO, PHI) gb
 
+
+--TODO double check my logic
+daa :: (Gameboy -> Gameboy)
+daa gb = setRegister A (regA + calculateHigh + calculateLow) gb
+    where
+      regA          = getRegister A gb
+      nibbleHigh    = regA .&. 0xF0
+      nibbleLow     = regA .&. 0x0F
+      calculateHigh = if (nibbleHigh > 144) || (getFlag gb carryFlag)
+                      then 0x60
+                      else 0x00
+      calculateLow  = if (nibbleLow > 9) || (getFlag gb halfCarryFlag)
+                      then 0x06
+                      else 0x00
+
 --cp :: Gameboy -> IO Gameboy
 --cp gb = do { byte <- getMemory (getRegisters (PHI, CLO) gb1) gb1
 --           ;  }
@@ -740,8 +756,8 @@ decodeOp 0x22 = Instruction 0x22 "LD (HL+), A" $ \gb -> do { ldedGB <- ldMemRegR
 decodeOp 0x23 = Instruction 0x23 "INC HL" $ fixGB $ incrementRegistersWithoutFlags (H, L)
 decodeOp 0x24 = Instruction 0x24 "INC H" $ fixGB $ incrementRegisterWithFlags H
 decodeOp 0x25 = Instruction 0x25 "DEC H" $ fixGB $ decrementRegisterWithFlags H
-decodeOp 0x28 = Instruction 0x26 "LD H, d8" $ ldRegWithData H
---TODO 0x27 "DAA"
+decodeOp 0x26 = Instruction 0x26 "LD H, d8" $ ldRegWithData H
+decodeOp 0x27 = Instruction 0x27 "DAA" $ fixGB daa
 --TODO 0x28 "JR Z, r8"
 decodeOp 0x29 = Instruction 0x29 "ADD HL, HL" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (H, L)
 --TODO 0x2A "LD A, (HL+)"
@@ -1247,4 +1263,13 @@ prettyPrintGb :: IO Gameboy -> IO ()
 prettyPrintGb igb = do { gb <- igb
                        ; let pCpu = prettyPrintCpu (gb ^. cpu)
                              pMem = testMem gb (prettyPrintMem (getRegisters (PHI, CLO) gb) gb)
-                         in putStr "\ESC[2J" >> pCpu >> putStrLn "" >> pMem }
+                         in pCpu >> putStrLn "" >> pMem }
+
+debugMode :: IO Gameboy -> IO Gameboy
+debugMode igb = do { gb    <- igb
+                   ; _     <- putStrLn "step: "
+                   ; steps <- getLine
+                   ; sgb   <- stepNGameboy (read steps) gb
+                   ; _     <- prettyPrintGb (return sgb)
+                   ; fgb   <- debugMode (return sgb)
+                   ; return fgb }
