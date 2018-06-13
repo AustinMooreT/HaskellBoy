@@ -553,6 +553,7 @@ addRegRegWithRegRegWithoutFlags rs1 rs2 gb = setRegisters rs1 ((getRegisters rs1
 
 --GAMEBOY
 -- | given a gameboy and a flag constant return wether or not it is set.
+-- TODO change the api to Word8 -> Bool -> Gameboy pls.
 getFlag :: Gameboy -> Word8 -> Bool
 getFlag gb w = testBit (getRegister F gb) (flagToInt w)
 
@@ -613,15 +614,6 @@ wordToSignedInt :: Word8 -> Int
 wordToSignedInt w
   | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
   | otherwise = fromIntegral w
-
---TODO clean this up.
-jumpRNZ :: Gameboy -> IO Gameboy
-jumpRNZ gb = if getFlag gb1 zeroFlag
-             then (\d_ -> return $ setRegisters (PHI, CLO) (fromIntegral $ (fromIntegral $ getRegisters (PHI,CLO) gb1) + (wordToSignedInt d_)) gb1) =<< d
-             else return gb1
-  where
-    d = getMemory (getRegisters (PHI, CLO) gb1) gb1
-    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
 
 ldFFRegAddrReg :: Register -> Register -> (Gameboy -> IO Gameboy)
 ldFFRegAddrReg d s gb = setMemory (0xFF00 + (toWord16 $ getRegister d gb)) (getRegister s gb) gb
@@ -684,16 +676,21 @@ ldMemDataWithRegReg (r1, r2) gb = do { mem1 <- getMemory (getRegisters (PHI, CLO
     gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
     gb2 = incrementRegistersWithoutFlags (PHI, CLO) gb1
 
-jrData :: (Gameboy -> IO Gameboy)
-jrData gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
-               ; let signedJmp = wordToSignedInt mem
-                 in return $ setRegisters (PHI, CLO)
-                    (fromIntegral ((fromIntegral $ getRegisters (PHI, CLO) gb1) + signedJmp)) gb1}
+jumpRelative :: (Gameboy -> IO Gameboy)
+jumpRelative gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
+                     ; let signedJmp = wordToSignedInt mem
+                       in return $ setRegisters (PHI, CLO)
+                       (fromIntegral ((fromIntegral $ getRegisters (PHI, CLO) gb1) + signedJmp)) gb1 }
   where
     gb1 = incrementRegistersWithoutFlags (CLO, PHI) gb
 
+jumpIfRelative :: Bool -> (Gameboy -> IO Gameboy)
+jumpIfRelative False gb = return gb
+jumpIfRelative True  gb = jumpRelative gb
 
---TODO double check my logic
+
+
+--TODO daa sets flags apparently.
 daa :: (Gameboy -> Gameboy)
 daa gb = setRegister A (regA + calculateHigh + calculateLow) gb
     where
@@ -706,6 +703,15 @@ daa gb = setRegister A (regA + calculateHigh + calculateLow) gb
       calculateLow  = if (nibbleLow > 9) || (getFlag gb halfCarryFlag)
                       then 0x06
                       else 0x00
+
+scf :: (Gameboy -> Gameboy)
+scf = (setFlag carryFlag True) . (setFlag (halfCarryFlag .&. subtractFlag) False)
+
+cpl :: (Gameboy -> Gameboy)
+cpl gb = setRegister A (xor (getRegister A gb) 0xFF) gb
+
+ccf :: (Gameboy -> Gameboy)
+ccf gb = (setFlag carryFlag (not $ getFlag gb carryFlag)) . (setFlag (halfCarryFlag .&. subtractFlag) False) $ gb
 
 --cp :: Gameboy -> IO Gameboy
 --cp gb = do { byte <- getMemory (getRegisters (PHI, CLO) gb1) gb1
@@ -741,7 +747,7 @@ decodeOp 0x14 = Instruction 0x14 "INC D" $ fixGB $ incrementRegisterWithFlags D
 decodeOp 0x15 = Instruction 0x15 "DEC D" $ fixGB $ decrementRegisterWithFlags D
 decodeOp 0x16 = Instruction 0x16 "LD D, d8" $ ldRegWithData D
 decodeOp 0x17 = Instruction 0x17 "RLA" $ fixGB rotateLeftA
-decodeOp 0x18 = Instruction 0x18 "JR r8" jrData
+decodeOp 0x18 = Instruction 0x18 "JR r8" jumpRelative
 decodeOp 0x19 = Instruction 0x19 "ADD HL, DE" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (D, E)
 decodeOp 0x1A = Instruction 0x1A "LD A, (DE)" $ ldRegWithRegRegMem A (D, E)
 decodeOp 0x1B = Instruction 0x1B "DEC BC" $ fixGB $ decrementRegistersWithoutFlags (D, E)
@@ -749,7 +755,7 @@ decodeOp 0x1C = Instruction 0x1C "INC E" $ fixGB $ incrementRegisterWithFlags E
 decodeOp 0x1D = Instruction 0x1D "DEC E" $ fixGB $ decrementRegisterWithFlags E
 decodeOp 0x1E = Instruction 0x1E "LD C, d8" $ ldRegWithData C
 decodeOp 0x1F = Instruction 0x1F "RRA" $ fixGB rotateRightA
-decodeOp 0x20 = Instruction 0x20 "JR NZ, r8" $ jumpRNZ
+decodeOp 0x20 = Instruction 0x20 "JR NZ, r8" $ \gb -> jumpIfRelative (not $ getFlag gb zeroFlag) gb
 decodeOp 0x21 = Instruction 0x21 "LD HL, d16" $ ldRegRegWithData (H, L)
 decodeOp 0x22 = Instruction 0x22 "LD (HL+), A" $ \gb -> do { ldedGB <- ldMemRegRegWithReg (H, L) A gb
                                                            ; return $ incrementRegistersWithoutFlags (H, L) ldedGB }
@@ -758,15 +764,16 @@ decodeOp 0x24 = Instruction 0x24 "INC H" $ fixGB $ incrementRegisterWithFlags H
 decodeOp 0x25 = Instruction 0x25 "DEC H" $ fixGB $ decrementRegisterWithFlags H
 decodeOp 0x26 = Instruction 0x26 "LD H, d8" $ ldRegWithData H
 decodeOp 0x27 = Instruction 0x27 "DAA" $ fixGB daa
---TODO 0x28 "JR Z, r8"
+decodeOp 0x28 = Instruction 0x28 "JR Z,r8" $ \gb -> jumpIfRelative (getFlag gb zeroFlag) gb
 decodeOp 0x29 = Instruction 0x29 "ADD HL, HL" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (H, L)
---TODO 0x2A "LD A, (HL+)"
+decodeOp 0x2A = Instruction 0x2A "LD A, (HL+)" $ \gb -> do { ldedGB <- ldRegWithRegRegMem A (H,L) gb
+                                                           ; return $ incrementRegistersWithoutFlags (H, L) ldedGB }
 decodeOp 0x2B = Instruction 0x2B "DEC HL" $ fixGB $ decrementRegistersWithoutFlags (H, L)
 decodeOp 0x2C = Instruction 0x2C "INC L" $ fixGB $ incrementRegisterWithFlags L
 decodeOp 0x2D = Instruction 0x2D "DEC L" $ fixGB $ decrementRegisterWithFlags L
 decodeOp 0x2E = Instruction 0x2E "LD L, d8" $ ldRegWithData L
---TODO 0x2F "CPL"
---TODO 0x30 "JR NC, r8"
+decodeOp 0x2F = Instruction 0x2F "CPL" $ fixGB cpl
+decodeOp 0x30 = Instruction 0x30 "JR NC, r8" $ \gb -> jumpIfRelative (not $ getFlag gb carryFlag) gb
 decodeOp 0x31 = Instruction 0x31 "LD SP, d16" $ ldRegRegWithData (SHI, PLO)
 decodeOp 0x32 = Instruction 0x32 "LD (HL-), A" $ \gb -> do { ldedGB <- ldMemRegRegWithReg (H, L) A gb
                                                            ; return $ decrementRegistersWithoutFlags (H, L) ldedGB }
@@ -774,15 +781,16 @@ decodeOp 0x33 = Instruction 0x33 "INC SP" $ fixGB $ incrementRegistersWithoutFla
 decodeOp 0x34 = Instruction 0x34 "INC (HL)" $ incrementMemoryRegReg (H, L)
 decodeOp 0x35 = Instruction 0x35 "DEC (HL)" $ decrementMemoryRegReg (H, L)
 decodeOp 0x36 = Instruction 0x36 "LD (HL), d8" $ ldMemRegRegWithData (H, L)
---TODO 0x37 "SCF"
---TODO 0x38 "JR C, r8"
---TODO 0x39 "ADD HL, SP"
---TODO 0x3A "LD A, (HL-)"
+decodeOp 0x37 = Instruction 0x37 "SCF" $ fixGB scf
+decodeOp 0x38 = Instruction 0x38 "JR C, r8" $ \gb -> jumpIfRelative (getFlag gb carryFlag) gb
+decodeOp 0x39 = Instruction 0x39 "ADD HL, SP" $ fixGB $ addRegRegWithRegRegWithFlags (H, L) (SHI, PLO)
+decodeOp 0x3A = Instruction 0x3A "LD A, (HL-)" $ \gb -> do { ldedGB <- ldRegWithRegRegMem A (H, L) gb
+                                                           ; return $ decrementRegistersWithoutFlags (H, L) ldedGB }
 decodeOp 0x3B = Instruction 0x3B "DEC SP" $ fixGB $ decrementRegistersWithoutFlags (SHI, PLO)
 decodeOp 0x3C = Instruction 0x3C "INC A" $ fixGB $ incrementRegisterWithFlags A
 decodeOp 0x3D = Instruction 0x3D "DEC A" $ fixGB $ decrementRegisterWithFlags A
 decodeOp 0x3E = Instruction 0x3E "LD A, d8" $ ldRegWithData A
---TODO 0x3F "CCF"
+decodeOp 0x3F = Instruction 0x3F "CCF" $ fixGB ccf
 decodeOp 0x40 = Instruction 0x40 "LD B, B" $ fixGB id
 decodeOp 0x41 = Instruction 0x41 "LD B, C" $ fixGB $ ldRegWithReg B C
 decodeOp 0x42 = Instruction 0x42 "LD B, D" $ fixGB $ ldRegWithReg B D
