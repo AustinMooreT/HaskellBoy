@@ -713,6 +713,10 @@ cpl gb = setRegister A (xor (getRegister A gb) 0xFF) gb
 ccf :: (Gameboy -> Gameboy)
 ccf gb = (setFlag carryFlag (not $ getFlag gb carryFlag)) . (setFlag (halfCarryFlag .&. subtractFlag) False) $ gb
 
+addRegWithRegRegMemWithFlags :: Register -> (Register, Register) -> (Gameboy -> IO Gameboy)
+addRegWithRegRegMemWithFlags r rs gb = do { mem <- getMemory (getRegisters rs gb) gb
+                                          ; return $ addWithFlags8 (getRegister A gb) mem (\w -> setRegister A w) gb }
+
 --cp :: Gameboy -> IO Gameboy
 --cp gb = do { byte <- getMemory (getRegisters (PHI, CLO) gb1) gb1
 --           ;  }
@@ -861,8 +865,9 @@ decodeOp 0x82 = Instruction 0x82 "ADD A, D" $ fixGB $ addRegWithRegWithFlags A D
 decodeOp 0x83 = Instruction 0x83 "ADD A, E" $ fixGB $ addRegWithRegWithFlags A E
 decodeOp 0x84 = Instruction 0x84 "ADD A, H" $ fixGB $ addRegWithRegWithFlags A H
 decodeOp 0x85 = Instruction 0x85 "ADD A, L" $ fixGB $ addRegWithRegWithFlags A L
---TODO 0x86 "ADD A, (HL)"
+decodeOp 0x86 = Instruction 0x86 "ADD A, (HL)" $ addRegWithRegRegMemWithFlags A (H, L)
 decodeOp 0x87 = Instruction 0x87 "ADD A, A" $ fixGB $ addRegWithRegWithFlags A A
+
 --TODO 0x88 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
@@ -871,7 +876,7 @@ decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" $ \gb -> push (getRegisters (B, C) gb
 decodeOp 0xC9 = Instruction 0xC9 "RET" $ ret
 --TODO 0xCA
 decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" $ \gb -> do { cb <- fetchCb $ incrementRegistersWithoutFlags (PHI, CLO) gb
-                                                                ; return $ decodeCb cb (incrementRegistersWithoutFlags (PHI,CLO) gb)}
+                                                                ; return $ decodeCb cb (incrementRegistersWithoutFlags (PHI,CLO) gb) }
 --TODO 0xCC
 decodeOp 0xCD = Instruction 0xCD "CALL a8" $ call
 --TODO 0xCE - 0xDF
@@ -1281,3 +1286,4 @@ debugMode igb = do { gb    <- igb
                    ; _     <- prettyPrintGb (return sgb)
                    ; fgb   <- debugMode (return sgb)
                    ; return fgb }
+
