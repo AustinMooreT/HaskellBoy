@@ -518,6 +518,26 @@ addWithFlags8 e1 e2 f = f addition .
     halfCarry = \gb -> setOverflowHalfCarry8 addition e2 gb
     subtractf = \gb -> setFlag subtractFlag False gb
 
+
+boolToWord :: Bool -> Word8
+boolToWord True = 1
+boolToWord _ = 0
+
+--GAMEBOY
+-- | adds e1 and e2 together and sets all apropriate flags using f to store the value back in the gameboy.
+addWithFlags8PlusC :: Word8 -> Word8 -> Bool -> (Word8 -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
+addWithFlags8PlusC e1 e2 b f = f addition .
+                       carry .
+                       halfCarry .
+                       subtractf .
+                       zero
+  where
+    addition  = e1 + e2 + (boolToWord b)
+    zero      = \gb -> setZero8 addition gb
+    carry     = \gb -> setOverflowCarry8 addition e2 gb
+    halfCarry = \gb -> setOverflowHalfCarry8 addition e2 gb
+    subtractf = \gb -> setFlag subtractFlag False gb
+
 --GAMEBOY
 -- | adds e1 and e2 together and sets all apropriate flags using f to store the value back in the gameboy.
 addWithFlags16 :: Word16 -> Word16 -> (Word16 -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
@@ -535,6 +555,12 @@ addWithFlags16 e1 e2 f = f addition .
 -- | adds two registers r1 and r2 together and stores the value in r1 and sets the appropriate flags.
 addRegWithRegWithFlags :: Register -> Register -> (Gameboy -> Gameboy)
 addRegWithRegWithFlags r1 r2 gb = addWithFlags8 (getRegister r1 gb) (getRegister r2 gb) (\d -> (\gb1 -> setRegister r1 d gb)) gb
+
+--GAMEBOY
+-- | adds two registers r1 and r2 together and stores the value in r1 and sets the appropriate flags.
+addRegWithRegWithFlagsPlusC :: Register -> Register -> (Gameboy -> Gameboy)
+addRegWithRegWithFlagsPlusC r1 r2 gb = addWithFlags8PlusC (getRegister r1 gb) (getRegister r2 gb) (getFlag gb carryFlag)
+                                       (\d -> (\gb1 -> setRegister r1 d gb)) gb
 
 --GAMEBOY
 -- | adds two register together r1 and r2 and stores the value in r1 and sets no flags.
@@ -717,6 +743,11 @@ addRegWithRegRegMemWithFlags :: Register -> (Register, Register) -> (Gameboy -> 
 addRegWithRegRegMemWithFlags r rs gb = do { mem <- getMemory (getRegisters rs gb) gb
                                           ; return $ addWithFlags8 (getRegister A gb) mem (\w -> setRegister A w) gb }
 
+addRegWithRegRegMemWithFlagsPlusC :: Register -> (Register, Register) -> (Gameboy -> IO Gameboy)
+addRegWithRegRegMemWithFlagsPlusC r rs gb = do { mem <- getMemory (getRegisters rs gb) gb
+                                               ; return $ addWithFlags8PlusC (getRegister A gb) mem (getFlag gb carryFlag)
+                                                 (\w -> setRegister A w) gb }
+
 --cp :: Gameboy -> IO Gameboy
 --cp gb = do { byte <- getMemory (getRegisters (PHI, CLO) gb1) gb1
 --           ;  }
@@ -867,7 +898,14 @@ decodeOp 0x84 = Instruction 0x84 "ADD A, H" $ fixGB $ addRegWithRegWithFlags A H
 decodeOp 0x85 = Instruction 0x85 "ADD A, L" $ fixGB $ addRegWithRegWithFlags A L
 decodeOp 0x86 = Instruction 0x86 "ADD A, (HL)" $ addRegWithRegRegMemWithFlags A (H, L)
 decodeOp 0x87 = Instruction 0x87 "ADD A, A" $ fixGB $ addRegWithRegWithFlags A A
-
+decodeOp 0x88 = Instruction 0x88 "ADC A, B" $ fixGB $ addRegWithRegWithFlagsPlusC A B
+decodeOp 0x89 = Instruction 0x89 "ADC A, C" $ fixGB $ addRegWithRegWithFlagsPlusC A C
+decodeOp 0x8A = Instruction 0x8A "ADC A, D" $ fixGB $ addRegWithRegWithFlagsPlusC A D
+decodeOp 0x8B = Instruction 0x8B "ADC A, E" $ fixGB $ addRegWithRegWithFlagsPlusC A E
+decodeOp 0x8C = Instruction 0x8C "ADC A, H" $ fixGB $ addRegWithRegWithFlagsPlusC A H
+decodeOp 0x8D = Instruction 0x8D "ADC A, L" $ fixGB $ addRegWithRegWithFlagsPlusC A B
+decodeOp 0x8E = Instruction 0x8E "ADC A, (HL)" $ addRegWithRegRegMemWithFlagsPlusC A (H, L)
+decodeOp 0x8F = Instruction 0x8F "ADC A, A" $ fixGB $ addRegWithRegWithFlagsPlusC A A
 --TODO 0x88 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
