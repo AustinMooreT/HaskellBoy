@@ -551,6 +551,21 @@ addWithFlags16 e1 e2 f = f addition .
     halfCarry = \gb -> setOverflowHalfCarry16 addition e2 gb
     subtractf = \gb -> setFlag subtractFlag False gb
 
+--GAMEBOY
+-- | subtracts e2 from e1 and uses f to store the result and all of the state changes back in a gb.
+subWithFlags8 :: Word8 -> Word8 -> (Word8 -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
+subWithFlags8 e1 e2 f = f addition .
+                       carry .
+                       halfCarry .
+                       subtractf .
+                       zero
+  where
+    addition  = e1 - e2
+    zero      = \gb -> setZero8 addition gb
+    carry     = \gb -> setUnderflowCarry8 addition e2 gb
+    halfCarry = \gb -> setUnderflowHalfCarry8 addition e2 gb
+    subtractf = \gb -> setFlag subtractFlag True gb
+
 --GAMEBOOY
 -- | adds two registers r1 and r2 together and stores the value in r1 and sets the appropriate flags.
 addRegWithRegWithFlags :: Register -> Register -> (Gameboy -> Gameboy)
@@ -576,6 +591,11 @@ addRegRegWithRegRegWithFlags rs1 rs2 gb = addWithFlags16 (getRegisters rs1 gb) (
 -- | adds two register pairs together rs1 and rs2 and stores the result in rs1 and sets no flags.
 addRegRegWithRegRegWithoutFlags :: (Register, Register) -> (Register, Register) -> (Gameboy -> Gameboy)
 addRegRegWithRegRegWithoutFlags rs1 rs2 gb = setRegisters rs1 ((getRegisters rs1 gb) + (getRegisters rs2 gb)) gb
+
+--GAMEBOY
+-- | subs r2 from r1 and stores the result back in r1
+subRegWithRegWithFlags :: Register -> Register -> (Gameboy -> Gameboy)
+subRegWithRegWithFlags r1 r2 gb = subWithFlags8 (getRegister r1 gb) (getRegister r2 gb) (\d -> (\gb1 -> setRegister r1 d gb)) gb
 
 --GAMEBOY
 -- | given a gameboy and a flag constant return wether or not it is set.
@@ -906,6 +926,7 @@ decodeOp 0x8C = Instruction 0x8C "ADC A, H" $ fixGB $ addRegWithRegWithFlagsPlus
 decodeOp 0x8D = Instruction 0x8D "ADC A, L" $ fixGB $ addRegWithRegWithFlagsPlusC A B
 decodeOp 0x8E = Instruction 0x8E "ADC A, (HL)" $ addRegWithRegRegMemWithFlagsPlusC A (H, L)
 decodeOp 0x8F = Instruction 0x8F "ADC A, A" $ fixGB $ addRegWithRegWithFlagsPlusC A A
+
 --TODO 0x88 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
