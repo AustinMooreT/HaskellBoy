@@ -932,7 +932,9 @@ decodeOp 0x92 = Instruction 0x92 "SUB D" $ fixGB $ subRegWithRegWithFlags A D
 decodeOp 0x93 = Instruction 0x93 "SUB E" $ fixGB $ subRegWithRegWithFlags A E
 decodeOp 0x94 = Instruction 0x94 "SUB H" $ fixGB $ subRegWithRegWithFlags A H
 decodeOp 0x95 = Instruction 0x95 "SUB L" $ fixGB $ subRegWithRegWithFlags A L
---TODO 0x96 - 0xAE
+--TODO 0x96
+decodeOp 0x97 = Instruction 0x97 "SUB A" $ fixGB $ subRegWithRegWithFlags A A
+--TODO 0x98 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" $ pop (B, C)
