@@ -926,8 +926,13 @@ decodeOp 0x8C = Instruction 0x8C "ADC A, H" $ fixGB $ addRegWithRegWithFlagsPlus
 decodeOp 0x8D = Instruction 0x8D "ADC A, L" $ fixGB $ addRegWithRegWithFlagsPlusC A B
 decodeOp 0x8E = Instruction 0x8E "ADC A, (HL)" $ addRegWithRegRegMemWithFlagsPlusC A (H, L)
 decodeOp 0x8F = Instruction 0x8F "ADC A, A" $ fixGB $ addRegWithRegWithFlagsPlusC A A
-
---TODO 0x88 - 0xAE
+decodeOp 0x90 = Instruction 0x90 "SUB B" $ fixGB $ subRegWithRegWithFlags A B
+decodeOp 0x91 = Instruction 0x91 "SUB C" $ fixGB $ subRegWithRegWithFlags A C
+decodeOp 0x92 = Instruction 0x92 "SUB D" $ fixGB $ subRegWithRegWithFlags A D
+decodeOp 0x93 = Instruction 0x93 "SUB E" $ fixGB $ subRegWithRegWithFlags A E
+decodeOp 0x94 = Instruction 0x94 "SUB H" $ fixGB $ subRegWithRegWithFlags A H
+decodeOp 0x95 = Instruction 0x95 "SUB L" $ fixGB $ subRegWithRegWithFlags A L
+--TODO 0x96 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" $ pop (B, C)
