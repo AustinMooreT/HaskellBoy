@@ -180,7 +180,6 @@ makeLenses ''Memory
 defaultMemory :: IO Memory
 defaultMemory = do { mem <- (newArray (0, 0xFFFF) 0)
                    ; return $ Memory mem }
-
 --GAMEBOY
 -- | Represents a gameboy.
 data Gameboy =
@@ -221,7 +220,7 @@ getMemory addr gb = let mem = view (memory . bytes) gb
 
 --GAMEBOY
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
-setMemory :: Word16 -> Word8 -> Gameboy -> IO Gameboy
+setMemory :: Word16 -> Word8 -> (Gameboy -> IO Gameboy)
 setMemory addr d gb = do { written <- (writeArray mem addr d)
                          ; return $ gb & memory .~ (Memory mem)}
   where
@@ -566,6 +565,22 @@ subWithFlags8 e1 e2 f = f addition .
     halfCarry = \gb -> setUnderflowHalfCarry8 addition e2 gb
     subtractf = \gb -> setFlag subtractFlag True gb
 
+
+--TODO comment this.
+subWithFlags8PlusC :: Word8 -> Word8 -> Bool -> (Word8 -> (Gameboy -> Gameboy)) -> (Gameboy -> Gameboy)
+subWithFlags8PlusC e1 e2 b f = f addition .
+                       carry .
+                       halfCarry .
+                       subtractf .
+                       zero
+  where
+    addition  = (e1 + (boolToWord b)) - e2
+    zero      = \gb -> setZero8 addition gb
+    carry     = \gb -> setUnderflowCarry8 addition e2 gb
+    halfCarry = \gb -> setUnderflowHalfCarry8 addition e2 gb
+    subtractf = \gb -> setFlag subtractFlag True gb
+
+
 --GAMEBOOY
 -- | adds two registers r1 and r2 together and stores the value in r1 and sets the appropriate flags.
 addRegWithRegWithFlags :: Register -> Register -> (Gameboy -> Gameboy)
@@ -596,6 +611,12 @@ addRegRegWithRegRegWithoutFlags rs1 rs2 gb = setRegisters rs1 ((getRegisters rs1
 -- | subs r2 from r1 and stores the result back in r1
 subRegWithRegWithFlags :: Register -> Register -> (Gameboy -> Gameboy)
 subRegWithRegWithFlags r1 r2 gb = subWithFlags8 (getRegister r1 gb) (getRegister r2 gb) (\d -> (\gb1 -> setRegister r1 d gb)) gb
+
+--GAMEBOY
+-- | subs r2 from r1 and stores the result back in r1
+subRegWithRegWithFlagsPlusC :: Register -> Register -> (Gameboy -> Gameboy)
+subRegWithRegWithFlagsPlusC r1 r2 gb = subWithFlags8PlusC (getRegister r1 gb) (getRegister r2 gb) (getFlag gb carryFlag)
+                                       (\d -> (\gb1 -> setRegister r1 d gb)) gb
 
 --GAMEBOY
 -- | given a gameboy and a flag constant return wether or not it is set.
@@ -934,7 +955,15 @@ decodeOp 0x94 = Instruction 0x94 "SUB H" $ fixGB $ subRegWithRegWithFlags A H
 decodeOp 0x95 = Instruction 0x95 "SUB L" $ fixGB $ subRegWithRegWithFlags A L
 --TODO 0x96
 decodeOp 0x97 = Instruction 0x97 "SUB A" $ fixGB $ subRegWithRegWithFlags A A
---TODO 0x98 - 0xAE
+decodeOp 0x98 = Instruction 0x98 "SBC A, B" $ fixGB $ subRegWithRegWithFlagsPlusC A B
+decodeOp 0x99 = Instruction 0x99 "SBC A, C" $ fixGB $ subRegWithRegWithFlagsPlusC A C
+decodeOp 0x9A = Instruction 0x9A "SBC A, D" $ fixGB $ subRegWithRegWithFlagsPlusC A D
+decodeOp 0x9B = Instruction 0x9B "SBC A, E" $ fixGB $ subRegWithRegWithFlagsPlusC A E
+decodeOp 0x9C = Instruction 0x9C "SBC A, H" $ fixGB $ subRegWithRegWithFlagsPlusC A H
+decodeOp 0x9D = Instruction 0x9D "SBC A, L" $ fixGB $ subRegWithRegWithFlagsPlusC A L
+--TODO 0x9E
+decodeOp 0x9F = Instruction 0x9F "SBC A, A" $ fixGB $ subRegWithRegWithFlagsPlusC A A
+--TODO 0xA0 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" $ pop (B, C)
