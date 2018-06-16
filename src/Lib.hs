@@ -972,6 +972,14 @@ decodeOp 0xA2 = Instruction 0xA2 "AND D" $ fixGB $ andReg D
 decodeOp 0xA3 = Instruction 0xA3 "AND E" $ fixGB $ andReg E
 decodeOp 0xA4 = Instruction 0xA4 "AND H" $ fixGB $ andReg H
 decodeOp 0xA5 = Instruction 0xA5 "AND L" $ fixGB $ andReg L
+--TODO 0xA6
+decodeOp 0xA7 = Instruction 0xA7 "AND A" $ fixGB $ andReg A
+decodeOp 0xA8 = Instruction 0xA8 "XOR B" $ fixGB $ xorReg B
+decodeOp 0xA9 = Instruction 0xA9 "XOR C" $ fixGB $ xorReg C
+decodeOp 0xAA = Instruction 0xAA "XOR D" $ fixGB $ xorReg D
+decodeOp 0xAB = Instruction 0xAB "XOR E" $ fixGB $ xorReg E
+decodeOp 0xAC = Instruction 0xAC "XOR H" $ fixGB $ xorReg H
+decodeOp 0xAD = Instruction 0xAD "XOR L" $ fixGB $ xorReg L
 --TODO 0xA0 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
