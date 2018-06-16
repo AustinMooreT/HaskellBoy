@@ -680,6 +680,9 @@ xorReg r gb = setRegister A (xor (getRegister A gb) (getRegister r gb)) gb
 andReg :: Register -> (Gameboy -> Gameboy)
 andReg r gb = setRegister A ((.&.) (getRegister A gb) (getRegister r gb)) gb
 
+orReg :: Register -> (Gameboy -> Gameboy)
+orReg r gb = setRegister A ((.|.) (getRegister A gb) (getRegister r gb)) gb
+
 wordToSignedInt :: Word8 -> Int
 wordToSignedInt w
   | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
@@ -980,9 +983,15 @@ decodeOp 0xAA = Instruction 0xAA "XOR D" $ fixGB $ xorReg D
 decodeOp 0xAB = Instruction 0xAB "XOR E" $ fixGB $ xorReg E
 decodeOp 0xAC = Instruction 0xAC "XOR H" $ fixGB $ xorReg H
 decodeOp 0xAD = Instruction 0xAD "XOR L" $ fixGB $ xorReg L
---TODO 0xA0 - 0xAE
+--TODO 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
---TODO 0xB0 - 0xC0
+decodeOp 0xB0 = Instruction 0xB0 "OR B" $ fixGB $ orReg B
+decodeOp 0xB1 = Instruction 0xB1 "OR C" $ fixGB $ orReg C
+decodeOp 0xB2 = Instruction 0xB2 "OR D" $ fixGB $ orReg D
+decodeOp 0xB3 = Instruction 0xB3 "OR E" $ fixGB $ orReg E
+decodeOp 0xB4 = Instruction 0xB4 "OR H" $ fixGB $ orReg H
+decodeOp 0xB5 = Instruction 0xB5 "OR L" $ fixGB $ orReg L
+--TODO 0xB6 - 0xC0
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" $ pop (B, C)
 decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" $ \gb -> push (getRegisters (B, C) gb) gb
 decodeOp 0xC9 = Instruction 0xC9 "RET" $ ret
