@@ -677,6 +677,9 @@ rotateRightACarry = (setFlag (zeroFlag .&. subtractFlag .&. halfCarryFlag) False
 xorReg :: Register -> (Gameboy -> Gameboy)
 xorReg r gb = setRegister A (xor (getRegister A gb) (getRegister r gb)) gb
 
+andReg :: Register -> (Gameboy -> Gameboy)
+andReg r gb = setRegister A ((.&.) (getRegister A gb) (getRegister r gb)) gb
+
 wordToSignedInt :: Word8 -> Int
 wordToSignedInt w
   | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
@@ -963,6 +966,12 @@ decodeOp 0x9C = Instruction 0x9C "SBC A, H" $ fixGB $ subRegWithRegWithFlagsPlus
 decodeOp 0x9D = Instruction 0x9D "SBC A, L" $ fixGB $ subRegWithRegWithFlagsPlusC A L
 --TODO 0x9E
 decodeOp 0x9F = Instruction 0x9F "SBC A, A" $ fixGB $ subRegWithRegWithFlagsPlusC A A
+decodeOp 0xA0 = Instruction 0xA0 "AND B" $ fixGB $ andReg B
+decodeOp 0xA1 = Instruction 0xA1 "AND C" $ fixGB $ andReg C
+decodeOp 0xA2 = Instruction 0xA2 "AND D" $ fixGB $ andReg D
+decodeOp 0xA3 = Instruction 0xA3 "AND E" $ fixGB $ andReg E
+decodeOp 0xA4 = Instruction 0xA4 "AND H" $ fixGB $ andReg H
+decodeOp 0xA5 = Instruction 0xA5 "AND L" $ fixGB $ andReg L
 --TODO 0xA0 - 0xAE
 decodeOp 0xAF = Instruction 0xAF "XOR A" $ fixGB $ xorReg A
 --TODO 0xB0 - 0xC0
