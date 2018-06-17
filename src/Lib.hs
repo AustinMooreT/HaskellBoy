@@ -795,11 +795,8 @@ addRegWithRegRegMemWithFlagsPlusC r rs gb = do { mem <- getMemory (getRegisters 
                                                ; return $ addWithFlags8PlusC (getRegister A gb) mem (getFlag gb carryFlag)
                                                  (\w -> setRegister A w) gb }
 
---cp :: Gameboy -> IO Gameboy
---cp gb = do { byte <- getMemory (getRegisters (PHI, CLO) gb1) gb1
---           ;  }
---  where
---    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
+cpReg :: Register -> (Gameboy -> Gameboy)
+cpReg r2 gb = subWithFlags8 (getRegister A gb) (getRegister r2 gb) (\_ -> \gb1 -> gb1) gb
 
 fixGB :: (Gameboy -> Gameboy) -> (Gameboy -> IO Gameboy)
 fixGB gb = (\gb_ -> return gb_ >>= (\gb__ -> return $ gb gb__))
@@ -992,8 +989,19 @@ decodeOp 0xB3 = Instruction 0xB3 "OR E" $ fixGB $ orReg E
 decodeOp 0xB4 = Instruction 0xB4 "OR H" $ fixGB $ orReg H
 decodeOp 0xB5 = Instruction 0xB5 "OR L" $ fixGB $ orReg L
 --TODO 0xB6 - 0xC0
+decodeOp 0xB7 = Instruction 0xB7 "OR A" $ fixGB $ orReg A
+decodeOp 0xB8 = Instruction 0xB8 "CP B" $ fixGB $ cpReg B
+decodeOp 0xB9 = Instruction 0xB9 "CP C" $ fixGB $ cpReg C
+decodeOp 0xBA = Instruction 0xBA "CP D" $ fixGB $ cpReg D
+decodeOp 0xBB = Instruction 0xBB "CP E" $ fixGB $ cpReg E
+decodeOp 0xBC = Instruction 0xBC "CP H" $ fixGB $ cpReg H
+decodeOp 0xBD = Instruction 0xBD "CP L" $ fixGB $ cpReg L
+--TODO 0xBE
+decodeOp 0xBF = Instruction 0xBF "CP A" $ fixGB $ cpReg A
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" $ pop (B, C)
+--TODO 0xC2 - 0xC4
 decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" $ \gb -> push (getRegisters (B, C) gb) gb
+--TODO 0xC6 - 0xC8
 decodeOp 0xC9 = Instruction 0xC9 "RET" $ ret
 --TODO 0xCA
 decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" $ \gb -> do { cb <- fetchCb $ incrementRegistersWithoutFlags (PHI, CLO) gb
