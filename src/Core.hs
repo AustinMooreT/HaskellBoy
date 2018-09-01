@@ -1,4 +1,19 @@
-module Core () where
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+
+module Core (module Core) where
+
+import Cpu
+import Memory
+import Lib
+
+import Data.Word
+import Control.Lens
+import Data.Array.IO as IOA
+import Data.Bits
+import Control.Monad
 
 --GAMEBOY
 -- | Represents a gameboy.

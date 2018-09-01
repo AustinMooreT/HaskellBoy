@@ -27,7 +27,15 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+                  Lib
+                , BootRom
+                , Core
+                , Cpu
+                , Debug
+                , Decode
+                , Lib
+                , Memory
+                , Execution
   other-modules:
       Paths_HaskellBoy
   hs-source-dirs:

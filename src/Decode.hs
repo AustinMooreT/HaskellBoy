@@ -3,9 +3,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Decode () where
+module Decode (module Decode) where
 
 import Core
+import Data.Word
+import Cpu
 
 decodeOp :: Word8 -> Instruction
 decodeOp 0x00 = Instruction 0x00 "NOP" $ \gb -> return gb

@@ -1,7 +1,15 @@
-module Debug () where
+{-# LANGUAGE TemplateHaskell #-}
+
+module Debug (module Debug) where
 
 import Core
-import Debug
+import Cpu
+import Execution
+
+import Control.Lens
+import System.Console.ANSI as A
+import Data.Word
+import Numeric (showHex)
 
 regToDoc :: Register -> String
 regToDoc A   = "A"

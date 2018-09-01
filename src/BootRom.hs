@@ -1,4 +1,7 @@
-module BootRom (loadBootRom) where
+module BootRom (module BootRom) where
+
+import Core
+import Lib
 
 loadBootRom :: Gameboy -> IO Gameboy
 loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
@@ -90,24 +93,24 @@ loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x00A9 0xED gb_) .|
                  (\gb_ -> setMemory 0x00A8 0xCE gb_) .|
                  (\gb_ -> setMemory 0x00A7 0xC9 gb_) .|
-                 (\gb_ -> setMemory 0x00A6 0x23 gb_) .| --Good
-                 (\gb_ -> setMemory 0x00A5 0x22 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x00A4 0x23 gb_) .| --Good
-                 (\gb_ -> setMemory 0x00A3 0x22 gb_) .| --24607 Maybe Good
-                 (\gb_ -> setMemory 0x00A2 0xF5 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x00A1 0x20 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x00A0 0x05 gb_) .| --Good
-                 (\gb_ -> setMemory 0x009F 0x17 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x009E 0x11 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x009D 0xCB gb_) .| --Good
-                 (\gb_ -> setMemory 0x009C 0xC1 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x009B 0x17 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x009A 0x11 gb_) .| --24600 Maybe Good
-                 (\gb_ -> setMemory 0x0099 0xCB gb_) .| --Good
-                 (\gb_ -> setMemory 0x0098 0xC5 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0097 0x04 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0096 0x06 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0095 0x4F gb_) .| --Good
+                 (\gb_ -> setMemory 0x00A6 0x23 gb_) .|
+                 (\gb_ -> setMemory 0x00A5 0x22 gb_) .|
+                 (\gb_ -> setMemory 0x00A4 0x23 gb_) .|
+                 (\gb_ -> setMemory 0x00A3 0x22 gb_) .|
+                 (\gb_ -> setMemory 0x00A2 0xF5 gb_) .|
+                 (\gb_ -> setMemory 0x00A1 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x00A0 0x05 gb_) .|
+                 (\gb_ -> setMemory 0x009F 0x17 gb_) .|
+                 (\gb_ -> setMemory 0x009E 0x11 gb_) .|
+                 (\gb_ -> setMemory 0x009D 0xCB gb_) .|
+                 (\gb_ -> setMemory 0x009C 0xC1 gb_) .|
+                 (\gb_ -> setMemory 0x009B 0x17 gb_) .|
+                 (\gb_ -> setMemory 0x009A 0x11 gb_) .|
+                 (\gb_ -> setMemory 0x0099 0xCB gb_) .|
+                 (\gb_ -> setMemory 0x0098 0xC5 gb_) .|
+                 (\gb_ -> setMemory 0x0097 0x04 gb_) .|
+                 (\gb_ -> setMemory 0x0096 0x06 gb_) .|
+                 (\gb_ -> setMemory 0x0095 0x4F gb_) .|
                  (\gb_ -> setMemory 0x0094 0xCB gb_) .|
                  (\gb_ -> setMemory 0x0093 0x18 gb_) .|
                  (\gb_ -> setMemory 0x0092 0x20 gb_) .|
@@ -209,51 +212,51 @@ loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x0032 0x20 gb_) .|
                  (\gb_ -> setMemory 0x0031 0x34 gb_) .|
                  (\gb_ -> setMemory 0x0030 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x002F 0x7B gb_) .| --Good 24628
-                 (\gb_ -> setMemory 0x002E 0x13 gb_) .| --Good
-                 (\gb_ -> setMemory 0x002D 0x00 gb_) .| --Good
-                 (\gb_ -> setMemory 0x002C 0x96 gb_) .| --Good
-                 (\gb_ -> setMemory 0x002B 0xCD gb_) .| --24611 should put PC here. : Maybe Good
-                 (\gb_ -> setMemory 0x002A 0x00 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0029 0x95 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0028 0xCD gb_) .| --24596 Maybe Good
-                 (\gb_ -> setMemory 0x0027 0x1A gb_) .| --Good
-                 (\gb_ -> setMemory 0x0026 0x80 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0025 0x10 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0024 0x21 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0023 0x01 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0022 0x04 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0021 0x11 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0020 0x47 gb_) .| --Good
-                 (\gb_ -> setMemory 0x001F 0xE0 gb_) .| --Good
-                 (\gb_ -> setMemory 0x001E 0xFC gb_) .| --Good
-                 (\gb_ -> setMemory 0x001D 0x3E gb_) .| --Good
-                 (\gb_ -> setMemory 0x001C 0x77 gb_) .| --Maybe Good 24590 steps
-                 (\gb_ -> setMemory 0x001B 0x77 gb_) .| --Good
-                 (\gb_ -> setMemory 0x001A 0x3E gb_) .| --Good
-                 (\gb_ -> setMemory 0x0019 0x32 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0018 0xE2 gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x0017 0xF3 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0016 0x3E gb_) .| --Good
-                 (\gb_ -> setMemory 0x0015 0x0C gb_) .| --Good
-                 (\gb_ -> setMemory 0x0014 0xE2 gb_) .| -- 24584 steps : Maybe Good
-                 (\gb_ -> setMemory 0x0013 0x32 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0012 0x80 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0011 0x3E gb_) .| --Good
-                 (\gb_ -> setMemory 0x0010 0x11 gb_) .| --Good
-                 (\gb_ -> setMemory 0x000F 0x0E gb_) .| --Good
-                 (\gb_ -> setMemory 0x000E 0xFF gb_) .| --Good
-                 (\gb_ -> setMemory 0x000D 0x26 gb_) .| --Good
-                 (\gb_ -> setMemory 0x000C 0x21 gb_) .| --Good
-                 (\gb_ -> setMemory 0x000B 0xFB gb_) .| --Good
-                 (\gb_ -> setMemory 0x000A 0x20 gb_) .| --Must run 24578 steps to get to this opcode : Maybe Good
-                 (\gb_ -> setMemory 0x0009 0x7C gb_) .| --Maybe Good
-                 (\gb_ -> setMemory 0x0008 0xCB gb_) .| --Good
-                 (\gb_ -> setMemory 0x0007 0x32 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0006 0x9F gb_) .| --Good
-                 (\gb_ -> setMemory 0x0005 0xFF gb_) .| --Good
-                 (\gb_ -> setMemory 0x0004 0x21 gb_) .| --Good
-                 (\gb_ -> setMemory 0x0003 0xAF gb_) .| --Good
-                 (\gb_ -> setMemory 0x0002 0xFF gb_) .| --Good
-                 (\gb_ -> setMemory 0x0001 0xFE gb_) .| --Good
-                 (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb --I may have a mistake here.
+                 (\gb_ -> setMemory 0x002F 0x7B gb_) .|
+                 (\gb_ -> setMemory 0x002E 0x13 gb_) .|
+                 (\gb_ -> setMemory 0x002D 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x002C 0x96 gb_) .|
+                 (\gb_ -> setMemory 0x002B 0xCD gb_) .|
+                 (\gb_ -> setMemory 0x002A 0x00 gb_) .|
+                 (\gb_ -> setMemory 0x0029 0x95 gb_) .|
+                 (\gb_ -> setMemory 0x0028 0xCD gb_) .|
+                 (\gb_ -> setMemory 0x0027 0x1A gb_) .|
+                 (\gb_ -> setMemory 0x0026 0x80 gb_) .|
+                 (\gb_ -> setMemory 0x0025 0x10 gb_) .|
+                 (\gb_ -> setMemory 0x0024 0x21 gb_) .|
+                 (\gb_ -> setMemory 0x0023 0x01 gb_) .|
+                 (\gb_ -> setMemory 0x0022 0x04 gb_) .|
+                 (\gb_ -> setMemory 0x0021 0x11 gb_) .|
+                 (\gb_ -> setMemory 0x0020 0x47 gb_) .|
+                 (\gb_ -> setMemory 0x001F 0xE0 gb_) .|
+                 (\gb_ -> setMemory 0x001E 0xFC gb_) .|
+                 (\gb_ -> setMemory 0x001D 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x001C 0x77 gb_) .|
+                 (\gb_ -> setMemory 0x001B 0x77 gb_) .|
+                 (\gb_ -> setMemory 0x001A 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x0019 0x32 gb_) .|
+                 (\gb_ -> setMemory 0x0018 0xE2 gb_) .|
+                 (\gb_ -> setMemory 0x0017 0xF3 gb_) .|
+                 (\gb_ -> setMemory 0x0016 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x0015 0x0C gb_) .|
+                 (\gb_ -> setMemory 0x0014 0xE2 gb_) .|
+                 (\gb_ -> setMemory 0x0013 0x32 gb_) .|
+                 (\gb_ -> setMemory 0x0012 0x80 gb_) .|
+                 (\gb_ -> setMemory 0x0011 0x3E gb_) .|
+                 (\gb_ -> setMemory 0x0010 0x11 gb_) .|
+                 (\gb_ -> setMemory 0x000F 0x0E gb_) .|
+                 (\gb_ -> setMemory 0x000E 0xFF gb_) .|
+                 (\gb_ -> setMemory 0x000D 0x26 gb_) .|
+                 (\gb_ -> setMemory 0x000C 0x21 gb_) .|
+                 (\gb_ -> setMemory 0x000B 0xFB gb_) .|
+                 (\gb_ -> setMemory 0x000A 0x20 gb_) .|
+                 (\gb_ -> setMemory 0x0009 0x7C gb_) .|
+                 (\gb_ -> setMemory 0x0008 0xCB gb_) .|
+                 (\gb_ -> setMemory 0x0007 0x32 gb_) .|
+                 (\gb_ -> setMemory 0x0006 0x9F gb_) .|
+                 (\gb_ -> setMemory 0x0005 0xFF gb_) .|
+                 (\gb_ -> setMemory 0x0004 0x21 gb_) .|
+                 (\gb_ -> setMemory 0x0003 0xAF gb_) .|
+                 (\gb_ -> setMemory 0x0002 0xFF gb_) .|
+                 (\gb_ -> setMemory 0x0001 0xFE gb_) .|
+                 (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb

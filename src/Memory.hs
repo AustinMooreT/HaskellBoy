@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Memory () where
+module Memory (module Memory) where
 
 import Control.Lens
 import Data.Array.IO

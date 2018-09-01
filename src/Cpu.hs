@@ -1,6 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Cpu () where
+module Cpu (module Cpu) where
+
+import Lib
 
 import Control.Lens
 import Data.Word
@@ -66,6 +68,7 @@ flagToInt 128 = 7
 flagToInt 64  = 6
 flagToInt 32  = 5
 flagToInt 16  = 4
+flagToInt _   = -1
 
 -- | Converts a register datum to an record accesor
 registerToFunc :: Register -> (Cpu -> Word8)
@@ -86,7 +89,6 @@ registerToFunc CLO  = _registerC_lo
 registerToLens :: Functor f => Register -> (Word8 -> f Word8) -> Cpu -> f Cpu
 registerToLens A    = registerA
 registerToLens B    = registerB
-
 registerToLens C    = registerC
 registerToLens D    = registerD
 registerToLens E    = registerE
