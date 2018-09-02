@@ -46,3 +46,6 @@ breakHi d = fromIntegral $ shiftR d 8
 -- | Returns the lo byte from a 16 bit value.
 breakLo :: Word16 -> Word8
 breakLo d = fromIntegral d
+
+maybeSetBit8 :: Bool -> Int -> Word8 -> Word8
+maybeSetBit8 b n w = if b then setBit w n else clearBit w n
