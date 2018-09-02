@@ -57,7 +57,7 @@ getMemory addr gb = let mem = view (memory . bytes) gb
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
 setMemory :: Word16 -> Word8 -> (Gameboy -> IO Gameboy)
 setMemory addr d gb = do { _ <- writeArray mem addr d
-                         ; return gb}
+                         ; return gb }
   where
     mem = gb ^. memory . bytes
 
