@@ -56,8 +56,8 @@ getMemory addr gb = let mem = view (memory . bytes) gb
 --GAMEBOY
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
 setMemory :: Word16 -> Word8 -> (Gameboy -> IO Gameboy)
-setMemory addr d gb = do { _ <- (writeArray mem addr d)
-                         ; return $ gb & memory .~ (Memory mem)}
+setMemory addr d gb = do { _ <- writeArray mem addr d
+                         ; return gb}
   where
     mem = gb ^. memory . bytes
 
@@ -65,7 +65,6 @@ setMemory addr d gb = do { _ <- (writeArray mem addr d)
 -- | Sets the value in register r to some 8 bit value d.
 setRegister :: Register -> Word8 -> Gameboy -> Gameboy
 setRegister r d gb = gb & cpu . registerToLens r .~ d
-
 --GAMEBOY
 -- | Sets the value in the combined registers rs to a 16 bit value d.
 setRegisters :: (Register, Register) -> Word16 -> Gameboy -> Gameboy
