@@ -9,8 +9,10 @@ import Memory
 import Lib
 
 import Control.Lens
+import Control.Monad
 import Data.Word
 import Data.Bits
+import Data.Array.IO
 
 data LcdMemoryBank = Bank Word16 Word16
 
@@ -140,6 +142,12 @@ bitsToShade False True  = LightGray
 bitsToShade True  False = DarkGray
 bitsToShade True  True  = Black
 
+decodeShade :: Palette -> Bool -> Bool -> Shade
+decodeShade pal False False = pal ^. color0
+decodeShade pal False True  = pal ^. color1
+decodeShade pal True  False = pal ^. color2
+decodeShade pal True  True  = pal ^. color3
+
 getBackgroundPalette :: Gameboy -> IO Palette
 getBackgroundPalette gb = do { byte <- getMemory 0xFF47 gb
                              ; let color0_ = bitsToShade (testBit byte 1) (testBit byte 0)
@@ -201,4 +209,45 @@ getLY = getMemory 0xFF44
   -- Come up with way to intercept internal writes from the cpu.
 setLY :: Word8 -> (Gameboy -> IO Gameboy)
 setLY = setMemory 0xFF44 . \x -> x `mod` 155
+
+-- | TODO Replace the word16 in tile with this data structure.
+  -- Requires writing an instance of the appropriate TypeClass in IOUArray.
+data TileLine =
+  TileLine
+  {
+    _pixels :: IOUArray Integer Shade
+  }
+makeLenses ''TileLine
+
+data Tile =
+  Tile
+  {
+    _tileLines :: IOUArray Integer Word16
+  }
+makeLenses ''Tile
+
+data Display =
+  Display
+  {
+    _tiles :: IOUArray Integer Tile
+  }
+makeLenses ''Display
+
+-- | TODO maybe replace this if it turns out tuples aren't O(1).
+  -- Because this update is going to be happening 60 * 8 * 32 * 32 times a second.
+byteToShades :: Palette -> Word8 -> (Shade, Shade, Shade, Shade)
+byteToShades pal byte = ((decodeShade pal (testBit byte 7) (testBit byte 6)),
+                         (decodeShade pal (testBit byte 5) (testBit byte 4)),
+                         (decodeShade pal (testBit byte 3) (testBit byte 2)),
+                         (decodeShade pal (testBit byte 1) (testBit byte 0)))
+
+updateTileLine :: Tile -> Word16 -> Integer  -> Gameboy -> IO ()
+updateTileLine tile addr i gb = do { b1 <- getMemory addr gb
+                                           ; b2 <- getMemory (addr + 1) gb
+                                           ; writeArray pix i $ combineData b1 b2 }
+
+  where pix = tile ^. tileLines
+
+updateTile :: Tile -> Word16 -> Gameboy -> IO ()
+updateTile tile addr gb = mapM_ (\i -> updateTileLine tile (addr + i) (fromIntegral i) gb) [0..7]
 
