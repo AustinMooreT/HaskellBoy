@@ -171,7 +171,34 @@ getObjectPalette1 :: Gameboy -> IO Palette
 getObjectPalette1 gb = getObjectPalette gb 0xFF49
 
 getScrollX :: Gameboy -> IO Word8
-getScrollX gb = getMemory 0xFF43 gb
+getScrollX = getMemory 0xFF43
+
+setScrollX :: Word8 -> (Gameboy -> IO Gameboy)
+setScrollX = setMemory 0xFF43
 
 getScrollY :: Gameboy -> IO Word8
-getScrollY gb = getMemory 0xFF42 gb
+getScrollY = getMemory 0xFF42
+
+setScrollY :: Word8 -> (Gameboy -> IO Gameboy)
+setScrollY = setMemory 0xFF42
+
+getWindowX :: Gameboy -> IO Word8
+getWindowX = getMemory 0xFF4B
+
+setWindowX :: Word8 -> (Gameboy -> IO Gameboy)
+setWindowX = setMemory 0xFF4B
+
+getWindowY :: Gameboy -> IO Word8
+getWindowY = getMemory 0xFF4A
+
+setWindowY :: Word8 -> (Gameboy -> IO Gameboy)
+setWindowY = setMemory 0xFF4A
+
+getLY :: Gameboy -> IO Word8
+getLY = getMemory 0xFF44
+
+-- | TODO Writing to this register will reset the value.
+  -- Come up with way to intercept internal writes from the cpu.
+setLY :: Word8 -> (Gameboy -> IO Gameboy)
+setLY = setMemory 0xFF44 . \x -> x `mod` 155
+
