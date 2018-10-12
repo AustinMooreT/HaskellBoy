@@ -1,0 +1,7 @@
+-- Debugging command : defaultGameboy >>= \x -> debugMode $ loadBootRom x
+-- It takes this many emulator steps to get through the graphics subroutine in the boot rom : 24579
+-- 28865 steps to current crash.
+
+
+--https://www.reddit.com/r/EmuDev/comments/9i5mu3/gameboy_do_i_need_to_draw_a_single_scanline_every/
+-- Here they mention rendering a scanline every 456 cycles.

@@ -11,6 +11,8 @@ import System.Console.ANSI as A
 import Data.Word
 import Numeric (showHex)
 
+-- TODO Debug is really nasty and needs some serious love.
+
 regToDoc :: Register -> String
 regToDoc A   = "A"
 regToDoc B   = "B"
@@ -88,6 +90,7 @@ attachTagsPC gb strs =  let tagSurround = \istr -> do { str <- istr
                                                            " <-- " ++
                                                            instrText ++
                                                            (replicate (21 - (length instrText)) ' ') }
+
                         in (map tagSurround (take 5 strs)) ++
                            (map tagMain (take 1 . drop 5 $ strs)) ++
                            (map tagSurround (drop 6 strs))

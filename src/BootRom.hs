@@ -3,6 +3,7 @@ module BootRom (module BootRom) where
 import Core
 import Lib
 
+
 loadBootRom :: Gameboy -> IO Gameboy
 loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x00FE 0xE0 gb_) .|
@@ -260,3 +261,6 @@ loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x0002 0xFF gb_) .|
                  (\gb_ -> setMemory 0x0001 0xFE gb_) .|
                  (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb
+
+-- | This is for testing purposes.
+--loadTetrisSnaphsot
