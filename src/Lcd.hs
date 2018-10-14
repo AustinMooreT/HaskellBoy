@@ -20,6 +20,12 @@ import Foreign.Marshal.Array
 import Foreign.ForeignPtr
 import Foreign.Ptr
 
+{- Misc lcd info.
+The lcd display is 160x144 pixels. Where each pixel is one of four shades of grey.
+It can show a background and a window (the window is an additonal background that overlays the other)
+It can display 40 sprites 10 per line of 8x8 or 8x16 sprites.
+-}
+
 -- | Data structure reprsenting the memory bank
   -- used by the lcd.
   -- First 16 bit word is the start address;
@@ -37,44 +43,45 @@ data SpriteSize = Tall | Short
   -- bgWindowTileSelect - TODO figure out what this is.
   -- spriteSize - 8x8 or 16x8 sprites.
   -- spritesEnabled - determines wether or not the lcd draws sprites.
-  -- bgWidnowDisplayPriority - TODO figure out what this is.
+  -- bgEnabled - Enables/Disables the background
+    -- Disabled Background is white.
 data LcdControl =
   LcdControl
   {
-    _lcdEnabled              :: Bool,
-    _windowTileMapSelect     :: LcdMemoryBank,
-    _windowEnabled           :: Bool,
-    _bgWindowTileSelect      :: LcdMemoryBank,
-    _bgTileMapSelect         :: LcdMemoryBank,
-    _spriteSize              :: SpriteSize,
-    _spritesEnabled          :: Bool,
-    _bgWindowDisplayPriority :: Bool
+    _lcdEnabled          :: Bool,
+    _windowTileMapSelect :: LcdMemoryBank,
+    _windowEnabled       :: Bool,
+    _bgWindowTileSelect  :: LcdMemoryBank,
+    _bgTileMapSelect     :: LcdMemoryBank,
+    _spriteSize          :: SpriteSize,
+    _spritesEnabled      :: Bool,
+    _bgEnabled           :: Bool
   }
 makeLenses ''LcdControl
 
 -- | Fetches the LcdControl structure from it's address in address space.
 getLcdControl :: Memory -> IO LcdControl
 getLcdControl gb = do { byte <- getMemory 0xFF40 gb
-                      ; let lcdEnabled_               = testBit byte 7
-                            windowTilemap             = if testBit byte 6 then
-                                                          Bank 0x9C00 0x9FFF
-                                                        else
-                                                          Bank 0x9800 0x9BFF
-                            windowEnabled_            = testBit byte 5
-                            bgWindowTile              = if testBit byte 4 then
-                                                          Bank 0x8000 0x8FFF
-                                                        else
-                                                          Bank 0x8800 0x97FF
-                            bgTileMap                 = if testBit byte 3 then
-                                                          Bank 0x9C00 0x9FFF
-                                                        else
-                                                          Bank 0x9800 0x9BFF
-                            spriteSize_               = if testBit byte 2 then
-                                                          Tall
-                                                        else
-                                                          Short
-                            spritesEnabled_           = testBit byte 1
-                            bgWindowDisplayPriotrity_ = testBit byte 0
+                      ; let lcdEnabled_     = testBit byte 7
+                            windowTilemap   = if testBit byte 6 then
+                                                Bank 0x9C00 0x9FFF
+                                              else
+                                                Bank 0x9800 0x9BFF
+                            windowEnabled_  = testBit byte 5
+                            bgWindowTile    = if testBit byte 4 then
+                                                Bank 0x8000 0x8FFF
+                                              else
+                                                Bank 0x8800 0x97FF
+                            bgTileMap       = if testBit byte 3 then
+                                                Bank 0x9C00 0x9FFF
+                                              else
+                                                Bank 0x9800 0x9BFF
+                            spriteSize_     = if testBit byte 2 then
+                                                Tall
+                                              else
+                                                Short
+                            spritesEnabled_ = testBit byte 1
+                            bgEnabled_      = testBit byte 0
                         in return $ LcdControl
                            lcdEnabled_
                            windowTilemap
@@ -83,7 +90,7 @@ getLcdControl gb = do { byte <- getMemory 0xFF40 gb
                            bgTileMap
                            spriteSize_
                            spritesEnabled_
-                           bgWindowDisplayPriotrity_ }
+                           bgEnabled_ }
 
 
 -- | LcdMode represents the four given states the lcd can be in.
@@ -175,48 +182,6 @@ data Palette =
     _color3 :: Shade
   }
 makeLenses ''Palette
-
-bitsToShade :: Bool -> Bool -> Shade
-bitsToShade False False = White
-bitsToShade False True  = LightGray
-bitsToShade True  False = DarkGray
-bitsToShade True  True  = Black
-
-decodeShade :: Palette -> Bool -> Bool -> Shade
-decodeShade pal False False = pal ^. color0
-decodeShade pal False True  = pal ^. color1
-decodeShade pal True  False = pal ^. color2
-decodeShade pal True  True  = pal ^. color3
-
-getBackgroundPalette :: Memory -> IO Palette
-getBackgroundPalette gb = do { byte <- getMemory 0xFF47 gb
-                             ; let color0_ = bitsToShade (testBit byte 1) (testBit byte 0)
-                                   color1_ = bitsToShade (testBit byte 3) (testBit byte 2)
-                                   color2_ = bitsToShade (testBit byte 5) (testBit byte 4)
-                                   color3_ = bitsToShade (testBit byte 7) (testBit byte 6)
-                               in return $ LcdPalette
-                               color0_
-                               color1_
-                               color2_
-                               color3_ }
-
-getObjectPalette :: Memory -> Word16 -> IO Palette
-getObjectPalette gb w = do { byte <- getMemory w gb
-                           ; let color0_ = Transparent
-                                 color1_ = bitsToShade (testBit byte 3) (testBit byte 2)
-                                 color2_ = bitsToShade (testBit byte 5) (testBit byte 4)
-                                 color3_ = bitsToShade (testBit byte 7) (testBit byte 6)
-                             in return $ LcdPalette
-                                color0_
-                                color1_
-                                color2_
-                                color3_ }
-
-getObjectPalette0 :: Memory -> IO Palette
-getObjectPalette0 gb = getObjectPalette gb 0xFF48
-
-getObjectPalette1 :: Memory -> IO Palette
-getObjectPalette1 gb = getObjectPalette gb 0xFF49
 
 getScrollX :: Memory -> IO Word8
 getScrollX = getMemory 0xFF43

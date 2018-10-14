@@ -48,13 +48,28 @@ set0xFF0F :: Word8 -> Memory -> IO Memory
 set0xFF0F d mem = writeArray (mem ^. bytes) 0xFF0F (0b11100000 .|. d) >>=
                   \_ -> return mem
 
+-- | Handles the special case when address 0xFF41 is read.
+  -- Bit 7 always returns 1.
+get0xFF41 :: Memory -> IO Word8
+get0xFF41 mem = readArray (mem ^. bytes) 0xFF41 >>=
+                \x -> return $ x .|. 0b10000000
+
+-- | Handles the special case when address 0xFF41 is written.
+  -- Cannot write bit 7.
+set0xFF41 :: Word8 -> Memory -> IO Memory
+set0xFF41 d mem = writeArray (mem ^. bytes) 0xFF41 (0b10000000 .|. d) >>=
+                  \_ -> return mem
+
 -- | Uses 16 bit value addr to index and return an 8 bit value in memory.
 getMemory :: Word16 -> Memory -> IO Word8
 getMemory 0xFF0F mem = get0xFF0F mem
-getMemory addr mem = readArray (mem ^. bytes) addr
+getMemory 0xFF41 mem = get0xFF41 mem
+getMemory addr   mem = readArray (mem ^. bytes) addr
 
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
 setMemory :: Word16 -> Word8 -> (Memory -> IO Memory)
 setMemory 0xFF0F d mem = set0xFF0F d mem
-setMemory addr d mem = writeArray (mem ^. bytes) addr d >>= \_ -> return mem;
+setMemory 0xFF41 d mem = set0xFF41 d mem
+setMemory addr   d mem = writeArray (mem ^. bytes) addr d >>=
+                         \_ -> return mem;
 

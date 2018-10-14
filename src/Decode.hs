@@ -6,7 +6,9 @@
 module Decode (module Decode) where
 
 import Core
+import Interrupts
 import Data.Word
+import Control.Lens
 import Cpu
 
 decodeOp :: Word8 -> Instruction
@@ -244,3 +246,23 @@ fetchCb gb = getMemory (getRegisters (PHI, CLO) gb) gb
 decodeCb :: Word8 -> (Gameboy -> Gameboy)
 decodeCb 0x11 = rotateLeft C . increaseClock 8
 decodeCb 0x7C = testBitReg H 7 . increaseClock 8
+
+-- | Handles any dispatchable interrupts the gameboy has.
+  -- This function also hanles all of the weird halting behavior.
+  -- TODO verify that HALT behaves properly.
+  -- TODO !!! EXTREME BUG !!! This crashes when getDispatchableInterrupts is [].
+handleInterrupts :: Gameboy -> IO Gameboy
+handleInterrupts gb
+  | gb ^. ime = do { is <- getDispatchableInterrupts (gb ^. memory)
+                   ; let int = getHighestPriorityInterrupt is
+                     in if gb ^. halt
+                     then dispatchInterrupt int       .
+                          increaseClock 24            .
+                          (\gb -> gb & halt .~ False) .
+                          (\gb -> gb & ime  .~ False) $ gb
+                     else dispatchInterrupt int       .
+                          increaseClock 20            .
+                          (\gb -> gb & ime  .~ False) $ gb }
+  | otherwise = if gb ^. halt
+                then return $ increaseClock 4 . (\gb -> gb & halt .~ False) $ gb
+                else return gb

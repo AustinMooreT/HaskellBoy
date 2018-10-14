@@ -25,7 +25,9 @@ data Gameboy =
     _cpu    :: Cpu,
     _memory :: Mem.Memory,
     --TODO add in LCD module after testing and documentation.
-    _clock  :: Integer
+    _clock  :: Integer,
+    _ime    :: Bool, -- This is the master interrupt flag.
+    _halt   :: Bool -- Flag keeping track of wether or not execution is halted.
   }
 makeLenses ''Gameboy
 
@@ -33,7 +35,7 @@ makeLenses ''Gameboy
 -- | Default gameboy used on startup.
 defaultGameboy :: IO Gameboy
 defaultGameboy = do { mem <- Mem.defaultMemory
-                    ; return $ Gameboy defaultCpu mem 0 }
+                    ; return $ Gameboy defaultCpu mem 0 False False }
 
 
 
@@ -665,8 +667,11 @@ testBitReg r i = \gb -> zero . sub . half $ gb
     sub   = setFlag subtractFlag  False
     half  = setFlag halfCarryFlag True
 
--- increases the gameboys clock by i cycles.
+-- | increases the gameboys clock by i cycles.
 increaseClock :: Integer -> Gameboy -> Gameboy
 increaseClock i gb = gb & clock %~ (\x -> x + i)
 
---dispatchInterrupt :: Gameboy -> (Gameboy -> IO Gameboy)
+-- | Dispatches a single interrupt.
+dispatchInterrupt :: Interrupt -> (Gameboy -> IO Gameboy)
+dispatchInterrupt int gb = do { gb1 <- (push (getRegisters (PHI, CLO) gb) gb)
+                              ; return $ setRegisters (PHI, CLO) (interruptToAddress int) gb1 }
