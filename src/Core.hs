@@ -26,6 +26,8 @@ data Gameboy =
     _memory :: Mem.Memory,
     --TODO add in LCD module after testing and documentation.
     _clock  :: Integer,
+    _opWait :: Integer, --time left until currOp is performed on gameboy.
+    _currOp :: Gameboy -> IO Gameboy, --the current gameboy op.
     _ime    :: Bool, -- This is the master interrupt flag.
     _halt   :: Bool -- Flag keeping track of wether or not execution is halted.
   }
@@ -35,7 +37,15 @@ makeLenses ''Gameboy
 -- | Default gameboy used on startup.
 defaultGameboy :: IO Gameboy
 defaultGameboy = do { mem <- Mem.defaultMemory
-                    ; return $ Gameboy defaultCpu mem 0 False False }
+                    ; return $ Gameboy
+                      defaultCpu --cpu
+                      mem --memory
+                      0 --current clock
+                      0 --op wait
+                      (\gb -> return gb) --current op
+                      False -- master interrupt flag.
+                      False -- halt flag.
+                    }
 
 
 
@@ -45,6 +55,7 @@ data Instruction =
   {
     _opcode    :: Word8,
     _name      :: String,
+    _time      :: (Gameboy -> Integer),
     _operation :: (Gameboy -> IO Gameboy)
   }
 makeLenses ''Instruction
@@ -134,7 +145,6 @@ ldRegRegWithData rs gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb
   where
     gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
     gb2 = incrementRegistersWithoutFlags (PHI, CLO) gb1
-
 
 
 -- | Loads a register r with data fetched from memory using the program counter.
@@ -517,11 +527,6 @@ andReg r gb = setRegister A ((.&.) (getRegister A gb) (getRegister r gb)) gb
 
 orReg :: Register -> (Gameboy -> Gameboy)
 orReg r gb = setRegister A ((.|.) (getRegister A gb) (getRegister r gb)) gb
-
-wordToSignedInt :: Word8 -> Int
-wordToSignedInt w
-  | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
-  | otherwise = fromIntegral w
 
 ldFFRegAddrReg :: Register -> Register -> (Gameboy -> IO Gameboy)
 ldFFRegAddrReg d s gb = setMemory (0xFF00 + (toWord16 $ getRegister d gb)) (getRegister s gb) gb

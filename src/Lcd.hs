@@ -31,9 +31,59 @@ It can display 40 sprites 10 per line of 8x8 or 8x16 sprites.
   -- First 16 bit word is the start address;
   -- While the second is end address.
 data LcdMemoryBank = Bank Word16 Word16
+  deriving (Eq)
+
+-- | One of the two options for the.
+  -- 32x32 tile map for the background.
+backgroundMap1 :: LcdMemoryBank
+backgroundMap1 = Bank 0x9800 0x9BFF
+
+-- | The second choice for the
+  -- 32x32 background tile map.
+backgroundMap2 :: LcdMemoryBank
+backgroundMap2 = Bank 0x9C00 0x9FFF
+
+-- | Background and window Tile mapping method 0.
+  -- Method 0 is unsigned.
+bgWindowMethod0 :: LcdMemoryBank
+bgWindowMethod0 = Bank 0x8000 0x8FFF
+
+-- | Background and window Tile mapping method 1.
+  -- Method 1 is signed.
+bgWindowMethod1 :: LcdMemoryBank
+bgWindowMethod1 = Bank 0x8800 0x97FF
+
+-- | Returns a boolean which is true if you should do
+ -- Signed arithmetic for addressing an LcdMemoryBank.
+isBgWindowMethodSigned :: LcdMemoryBank -> Bool
+isBgWindowMethodSigned mb
+  | bgWindowMethod1 == mb = True
+  | otherwise             = False
+
+-- | Converts an lcd memory bank to it's corresponding bit for
+  -- easy setting.
+lcdMemoryBankDecodeBit :: LcdMemoryBank -> Bool
+lcdMemoryBankDecodeBit mb
+  | backgroundMap1  == mb = False
+  | bgWindowMethod1 == mb = False
+  | backgroundMap2  == mb = True
+  | bgWindowMethod0 == mb = True
+  | otherwise             = False
+
+-- | Based on the background tile window map
+  -- Fetches the ptr to the start of the tile.
+getBgWindowTileOffset :: LcdMemoryBank -> Word8 -> Word16
+getBgWindowTileOffset (Bank s e) w8 = signedAddIf (isBgWindowMethodSigned lmb) w8 s
+  where lmb = Bank s e
 
 -- | Used to determine wether or not sprites are 16x8 or 8x8
 data SpriteSize = Tall | Short
+
+-- | Converts a sprite size to its corresponding bit
+  -- for easy setting.
+spriteSizeDecodeBit :: SpriteSize -> Bool
+spriteSizeDecodeBit Tall  = True
+spriteSizeDecodeBit Short = False
 
 -- | Represents the control register for the LCD.
   -- lcdEnabled - Determines wether or not the lcd is on/off.
@@ -64,18 +114,18 @@ getLcdControl :: Memory -> IO LcdControl
 getLcdControl gb = do { byte <- getMemory 0xFF40 gb
                       ; let lcdEnabled_     = testBit byte 7
                             windowTilemap   = if testBit byte 6 then
-                                                Bank 0x9C00 0x9FFF
+                                                backgroundMap2
                                               else
-                                                Bank 0x9800 0x9BFF
+                                                backgroundMap1
                             windowEnabled_  = testBit byte 5
                             bgWindowTile    = if testBit byte 4 then
-                                                Bank 0x8000 0x8FFF
+                                                bgWindowMethod0
                                               else
-                                                Bank 0x8800 0x97FF
+                                                bgWindowMethod1
                             bgTileMap       = if testBit byte 3 then
-                                                Bank 0x9C00 0x9FFF
+                                                backgroundMap2
                                               else
-                                                Bank 0x9800 0x9BFF
+                                                backgroundMap1
                             spriteSize_     = if testBit byte 2 then
                                                 Tall
                                               else
@@ -92,6 +142,24 @@ getLcdControl gb = do { byte <- getMemory 0xFF40 gb
                            spritesEnabled_
                            bgEnabled_ }
 
+
+
+-- | Converts the lcd control data structure into
+  -- an 8 bit byte to be written to memory.
+lcdControlToByte :: LcdControl -> Word8
+lcdControlToByte lc = maybeSetBit8 (lc ^. lcdEnabled) 7 .
+                      maybeSetBit8 (lcdMemoryBankDecodeBit $ lc ^. windowTileMapSelect) 6 .
+                      maybeSetBit8 (lc ^. windowEnabled) 5                                .
+                      maybeSetBit8 (lcdMemoryBankDecodeBit $ lc ^. bgWindowTileSelect) 4  .
+                      maybeSetBit8 (lcdMemoryBankDecodeBit $ lc ^. bgTileMapSelect) 3     .
+                      maybeSetBit8 (spriteSizeDecodeBit $ lc ^. spriteSize) 2             .
+                      maybeSetBit8 (lc ^. spritesEnabled) 1                               .
+                      maybeSetBit8 (lc ^. bgEnabled) 0 $ 0b00000000
+
+
+-- | Writes the state of a given LcdControl register to memory.
+setLcdControl :: LcdControl -> Memory -> IO Memory
+setLcdControl l m = setMemory 0xFF40 (lcdControlToByte l) m
 
 -- | LcdMode represents the four given states the lcd can be in.
   -- HBlank - Horizontal blanking period interrupt is triggered.
@@ -215,24 +283,35 @@ getLY = getMemory 0xFF44
 setLY :: Word8 -> (Memory -> IO Memory)
 setLY = setMemory 0xFF44 . \x -> x `mod` 155
 
-data GlossDisplayBuffer =
-  GlossDisplayBuffer
+data DisplayBuffer =
+  DisplayBuffer
   {
     _arrPtr :: Ptr Word8,
     _forPtr :: ForeignPtr Word8,
     _width  :: Int,
     _height :: Int
   }
-makeLenses ''GlossDisplayBuffer
+makeLenses ''DisplayBuffer
 
-mainBuffer :: IO GlossDisplayBuffer
+mainBuffer :: IO DisplayBuffer
 mainBuffer = do { p <- mallocArray 92160
                 ; f <- newForeignPtr finalizerFree p :: IO (ForeignPtr Word8)
-                ; return $ GlossDisplayBuffer p f 160 144 }
-
+                ; return $ DisplayBuffer p f 160 144 }
 
 byteToScanlineOffset :: Word8 -> Int
 byteToScanlineOffset b = (fromIntegral b) * 640
+
+data Tile =
+  Tile
+  {
+    _shades :: [Shade]
+  }
+makeLenses ''Tile
+
+-- | Converts a byte int it's corresponding shades
+  -- based on the current Palette selected.
+byteToShades :: Word8 -> Palette -> [Shade]
+3byteToShades w8 pl = 
 
 convertShadeToRGBA :: Shade -> [Word8]
 convertShadeToRGBA White     = [255, 255, 255, 255]
@@ -240,11 +319,11 @@ convertShadeToRGBA LightGray = [192, 192, 192, 255]
 convertShadeToRGBA DarkGray  = [96 , 96 , 96 , 255]
 convertShadeToRGBA Black     = [0  , 0  , 0  , 255]
 
-renderScanline :: [Shade] -> Word8 -> GlossDisplayBuffer -> IO ()
+renderScanline :: [Shade] -> Word8 -> DisplayBuffer -> IO ()
 renderScanline s l b = pokeArray (plusPtr (b ^. arrPtr) (byteToScanlineOffset l))
                        $ foldl (++) [] $ map convertShadeToRGBA s
 
-displayGlossBuffer :: GlossDisplayBuffer -> Bool -> IO ()
+displayGlossBuffer :: DisplayBuffer -> Bool -> IO ()
 displayGlossBuffer b False = display
                              (InWindow "BestWindow" (b ^. width, b ^. height) (0,0)) white
                              (bitmapOfForeignPtr (b ^. width) (b ^. height)
@@ -254,3 +333,55 @@ displayGlossBuffer b True  = display
                              (scale 5.0 5.0 $ bitmapOfForeignPtr (b ^. width) (b ^. height)
                                (BitmapFormat TopToBottom PxRGBA) (b ^. forPtr) False)
 
+-- | Data structure representing the Gameboy's LCD.
+data Lcd =
+  Lcd
+  {
+    _lcdControl :: LcdControl,
+    _lcdStatus  :: LcdStatus,
+    _scrollx    :: Word8,
+    _scrolly    :: Word8,
+    _windowx    :: Word8,
+    _windowy    :: Word8,
+    _buffer     :: DisplayBuffer,
+    _clock      :: Integer,
+    _hWait      :: Integer
+  }
+makeLenses ''Lcd
+
+-- | Get the latest values for the LCD from memory.
+getLcd :: Lcd -> Memory -> IO Lcd
+getLcd l m = do { cntrl <- getLcdControl m
+                ; stats <- getLcdStatus m
+                ; sx    <- getScrollX m
+                ; sy    <- getScrollY m
+                ; wx    <- getWindowX m
+                ; wy    <- getWindowY m
+                ; return $
+                  Lcd
+                  cntrl
+                  stats
+                  sx
+                  sy
+                  wx
+                  wy
+                  (l ^. buffer)
+                  (l ^. clock)
+                  (l ^. hWait) }
+
+--setLcd :: Lcd -> Memory -> IO Memory
+--setLcd l m = do { _ <- setLcdC
+  
+--                }
+
+--getTopLeftCorner :: Lcd -> Memory -> IO Word16
+--getTopLeftCorner lcd mem = (lcd ^. lcdStatus) ^.
+--  where sx = (lcd ^. scrollx)
+--        sy = (lcd ^. scrolly)
+
+
+
+-- | Advances the lcd clock by 1 cycle.
+--advanceLcdCycle :: Lcd -> IO Lcd
+--advanceLcdCycle lcd
+--  | hWait == 0 = 

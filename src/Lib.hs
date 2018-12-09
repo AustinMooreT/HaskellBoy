@@ -47,5 +47,18 @@ breakHi d = fromIntegral $ shiftR d 8
 breakLo :: Word16 -> Word8
 breakLo d = fromIntegral d
 
+-- | Sets the n'th bit if b is true; otherwise resets it.
 maybeSetBit8 :: Bool -> Int -> Word8 -> Word8
 maybeSetBit8 b n w = if b then setBit w n else clearBit w n
+
+-- | Converts a 8 bit word to a signed integer type.
+wordToSignedInt :: Word8 -> Int
+wordToSignedInt w
+  | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
+  | otherwise = fromIntegral w
+
+-- | performs signed arithmetic if bool is true
+  -- otherwise it's unsigned.
+signedAddIf :: Bool -> Word8 -> Word16 -> Word16
+signedAddIf True  w8 w16 = fromIntegral $ (wordToSignedInt w8) + (fromIntegral w16)
+signedAddIf False w8 w16 = (fromIntegral w8) + (fromIntegral w16)
