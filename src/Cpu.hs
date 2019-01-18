@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-
+{-# LANGUAGE RankNTypes #-}
 module Cpu (module Cpu) where
 
 import Lib
@@ -27,7 +27,21 @@ data Cpu =
   }
 makeLenses ''Cpu
 
--- | Instance for converting a CPU to string for easy debug.
+composeRegisterLenses :: Lens' Cpu Word8 -> Lens' Cpu Word8 -> Lens' Cpu Word16
+composeRegisterLenses reg1 reg2 = lens getter setter
+  where
+    getter cpu = combineData (cpu ^. reg1) (cpu ^. reg2)
+    setter cpu d = cpu & reg1 .~ (breakHi d) & reg2 .~ (breakLo d)
+
+registerHL :: Lens' Cpu Word16
+registerHL = composeRegisterLenses registerH registerL
+
+registerSP :: Lens' Cpu Word16
+registerSP = composeRegisterLenses registerS_hi registerP_lo
+
+registerPC :: Lens' Cpu Word16
+registerPC = composeRegisterLenses registerP_hi registerP_lo
+
 instance Show Cpu where
   show cpu = "A:[" Prelude.++ (show $ cpu ^. registerA) Prelude.++ "]\n" Prelude.++
              "B:[" Prelude.++ (show $ cpu ^. registerB) Prelude.++ "]\n" Prelude.++
@@ -37,15 +51,12 @@ instance Show Cpu where
              "F:[" Prelude.++ (show $ cpu ^. registerF) Prelude.++ "]\n" Prelude.++
              "H:[" Prelude.++ (show $ cpu ^. registerH) Prelude.++ "]\n" Prelude.++
              "L:[" Prelude.++ (show $ cpu ^. registerL) Prelude.++ "]\n" Prelude.++
-             "SP:[" Prelude.++ (show $ cpu ^. composeRegisterLenses (SHI, PLO)) Prelude.++ "]\n" Prelude.++
-             "PC:[" Prelude.++ (show $ cpu ^. composeRegisterLenses (PHI, CLO)) Prelude.++ "]\n"
+             "SP:[" Prelude.++ (show $ cpu ^. registerSP) Prelude.++ "]\n" Prelude.++
+             "PC:[" Prelude.++ (show $ cpu ^. registerPC) Prelude.++ "]\n"
 
 -- | Default cpu on startup.
 defaultCpu :: Cpu
 defaultCpu = Cpu 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-
--- | Represents given registers in the CPU.
-data Register = A | B | C | D | E | F | H | L | SHI | PLO | PHI | CLO
 
 -- | CPU flag constant for zero.
 zeroFlag :: Word8
@@ -71,42 +82,7 @@ flagToInt 32  = 5
 flagToInt 16  = 4
 flagToInt _   = -1
 
--- | Converts a register datum to an record accesor
-registerToFunc :: Register -> (Cpu -> Word8)
-registerToFunc A    = _registerA
-registerToFunc B    = _registerB
-registerToFunc C    = _registerC
-registerToFunc D    = _registerD
-registerToFunc E    = _registerE
-registerToFunc F    = _registerF
-registerToFunc H    = _registerH
-registerToFunc L    = _registerL
-registerToFunc SHI  = _registerS_hi
-registerToFunc PLO  = _registerP_lo
-registerToFunc PHI  = _registerP_hi
-registerToFunc CLO  = _registerC_lo
 
--- | Converts a register datum to a Lens (functor).
-registerToLens :: Functor f => Register -> (Word8 -> f Word8) -> Cpu -> f Cpu
-registerToLens A    = registerA
-registerToLens B    = registerB
-registerToLens C    = registerC
-registerToLens D    = registerD
-registerToLens E    = registerE
-registerToLens F    = registerF
-registerToLens H    = registerH
-registerToLens L    = registerL
-registerToLens SHI  = registerS_hi
-registerToLens PLO  = registerP_lo
-registerToLens PHI  = registerP_hi
-registerToLens CLO  = registerC_lo
-
--- | Takes two registers and creates a Lens (functor) for getting and setting them as a 16 bit unit.
-composeRegisterLenses :: Functor f => (Register, Register) -> (Word16 -> f Word16) -> Cpu -> f Cpu
-composeRegisterLenses (reg1, reg2) = lens getter setter
-  where
-    getter __cpu = combineData (registerToFunc reg1 __cpu) (registerToFunc reg2 __cpu)
-    setter __cpu d = __cpu & registerToLens reg1 .~ breakHi d & registerToLens reg2 .~ breakLo d
 
 -- | Represents an instruction to the Gameboy's processor.
 data Instruction =
@@ -121,6 +97,6 @@ makeLenses ''Instruction
 instance Show Instruction where
   show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
 
--- | Sets the value in register r to some 8 bit value d.
-setRegister :: Register -> Word8 -> Gameboy -> Gameboy
-setRegister r d gb = gb & cpu . registerToLens r .~ d
+-- | Loads data from src into dest.
+ldRegWithReg :: Register -> Register -> (Gameboy -> Gameboy)
+ldRegWithReg dest src gb = setRegister dest (getRegister src gb) gb
