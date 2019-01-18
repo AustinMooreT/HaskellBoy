@@ -1,5 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ImpredicativeTypes #-}
+
 module Cpu (module Cpu) where
 
 import Lib
@@ -97,6 +99,7 @@ makeLenses ''Instruction
 instance Show Instruction where
   show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
 
--- | Loads data from src into dest.
-ldRegWithReg :: Register -> Register -> (Gameboy -> Gameboy)
-ldRegWithReg dest src gb = setRegister dest (getRegister src gb) gb
+(/.~) :: (Cpu, Memory) -> (Lens' Cpu Word8, Word16) -> IO (Cpu, Memory)
+(/.~) (cpu, mem) (reg, addr) = do { d <- getMemory addr mem
+                                  ; return $ (cpu & reg .~ d, mem) }
+

@@ -62,3 +62,6 @@ wordToSignedInt w
 signedAddIf :: Bool -> Word8 -> Word16 -> Word16
 signedAddIf True  w8 w16 = fromIntegral $ (wordToSignedInt w8) + (fromIntegral w16)
 signedAddIf False w8 w16 = (fromIntegral w8) + (fromIntegral w16)
+
+(\*/) :: a -> b -> (a,b)
+(\*/) a b = (a, b)
