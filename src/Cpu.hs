@@ -6,6 +6,7 @@ import Lib
 
 import Control.Lens
 import Data.Word
+import Memory
 
 -- | Represents the CPU.
 data Cpu =
@@ -106,3 +107,13 @@ composeRegisterLenses (reg1, reg2) = lens getter setter
   where
     getter __cpu = combineData (registerToFunc reg1 __cpu) (registerToFunc reg2 __cpu)
     setter __cpu d = __cpu & registerToLens reg1 .~ breakHi d & registerToLens reg2 .~ breakLo d
+
+-- | Represents an instruction to the Gameboy's processor.
+data Instruction =
+  Instruction
+  {
+    _opcode    :: Word8,
+    _name      :: String,
+    _operation :: ((Cpu -> IO Cpu), (Memory -> IO Memory))
+  }
+makeLenses ''Instruction
