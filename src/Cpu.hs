@@ -117,3 +117,6 @@ data Instruction =
     _operation :: ((Cpu -> IO Cpu), (Memory -> IO Memory))
   }
 makeLenses ''Instruction
+-- | Instance of show for converting Instructions to a String.
+instance Show Instruction where
+  show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
