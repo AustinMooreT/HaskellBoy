@@ -17,31 +17,6 @@ import Data.Array.IO as IOA
 import Data.Bits
 import Control.Monad
 
--- | Represents an instruction to the Gameboy's processor.
-data Instruction =
-  Instruction
-  {
-    _opcode    :: Word8,
-    _name      :: String,
-    _operation :: ((CPU -> IO CPU), (Memory -> IO Memory))
-  }
-makeLenses ''Instruction
-
-
--- | Instance of show for converting Instructions to a String.
-instance Show Instruction where
-  show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
-
-
--- | Uses 16 bit value addr to index and return an 8 bit value in memory.
-getMemory :: Word16 -> Gameboy -> IO Word8
-getMemory addr gb = Mem.getMemory addr (gb ^. memory)
-
-
--- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
-setMemory :: Word16 -> Word8 -> (Gameboy -> IO Gameboy)
-setMemory addr d gb = Mem.setMemory addr d (gb ^. memory) >>= \_ -> return gb
-
 
 
 -- | Sets the value in register r to some 8 bit value d.

@@ -120,3 +120,7 @@ makeLenses ''Instruction
 -- | Instance of show for converting Instructions to a String.
 instance Show Instruction where
   show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
+
+-- | Sets the value in register r to some 8 bit value d.
+setRegister :: Register -> Word8 -> Gameboy -> Gameboy
+setRegister r d gb = gb & cpu . registerToLens r .~ d
