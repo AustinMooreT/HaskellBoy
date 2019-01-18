@@ -1,13 +1,13 @@
---{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell #-}
 --{-# LANGUAGE BinaryLiterals #-}
 --{-# LANGUAGE OverloadedStrings #-}
---{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Lib (module Lib) where
 
 
 import Data.Word
---import Control.Lens
+import Control.Lens
 --import Data.Array.IO as IOA
 import Data.Bits
 --import Data.Binary.Get
@@ -65,3 +65,7 @@ signedAddIf False w8 w16 = (fromIntegral w8) + (fromIntegral w16)
 
 (\*/) :: a -> b -> (a,b)
 (\*/) a b = (a, b)
+
+newtype ScopedLens a b = ScopedLens (Lens' a b)
+scopeLens :: Lens' a b -> ScopedLens a b
+scopeLens = ScopedLens

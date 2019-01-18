@@ -85,7 +85,6 @@ flagToInt 16  = 4
 flagToInt _   = -1
 
 
-
 -- | Represents an instruction to the Gameboy's processor.
 data Instruction =
   Instruction
@@ -103,3 +102,6 @@ instance Show Instruction where
 (/.~) (cpu, mem) (reg, addr) = do { d <- getMemory addr mem
                                   ; return $ (cpu & reg .~ d, mem) }
 
+(//.~) :: (Cpu, Memory) -> (Lens' Cpu Word8, Lens' Cpu Word16) -> IO (Cpu, Memory)
+(//.~) (cpu, mem) (regd, regs) = do { d <- getMemory (cpu ^. regs) mem
+                                    ; return $ (cpu & regs .~ d, mem) }
