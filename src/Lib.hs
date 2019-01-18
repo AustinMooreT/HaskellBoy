@@ -67,5 +67,9 @@ signedAddIf False w8 w16 = (fromIntegral w8) + (fromIntegral w16)
 (\*/) a b = (a, b)
 
 newtype ScopedLens a b = ScopedLens (Lens' a b)
+
 scopeLens :: Lens' a b -> ScopedLens a b
 scopeLens = ScopedLens
+
+unscopeLens :: ScopedLens a b -> Lens' a b
+unscopeLens (ScopedLens l) = l

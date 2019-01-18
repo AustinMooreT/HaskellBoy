@@ -1,6 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ImpredicativeTypes #-}
 
 module Cpu (module Cpu) where
 
@@ -98,10 +97,14 @@ makeLenses ''Instruction
 instance Show Instruction where
   show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
 
-(/.~) :: (Cpu, Memory) -> (Lens' Cpu Word8, Word16) -> IO (Cpu, Memory)
-(/.~) (cpu, mem) (reg, addr) = do { d <- getMemory addr mem
-                                  ; return $ (cpu & reg .~ d, mem) }
 
-(//.~) :: (Cpu, Memory) -> (Lens' Cpu Word8, Lens' Cpu Word16) -> IO (Cpu, Memory)
-(//.~) (cpu, mem) (regd, regs) = do { d <- getMemory (cpu ^. regs) mem
-                                    ; return $ (cpu & regs .~ d, mem) }
+(/.~) :: (Cpu, Memory) -> (ScopedLens Cpu Word8, Word16) -> IO (Cpu, Memory)
+(/.~) (cpu, mem) (reg, addr) = do { d <- getMemory addr mem
+                                  ; return $ (cpu & reg' .~ d, mem) }
+  where reg' = unscopeLens reg
+
+(//.~) :: (Cpu, Memory) -> (ScopedLens Cpu Word8, ScopedLens Cpu Word16) -> IO (Cpu, Memory)
+(//.~) (cpu, mem) (regd, regs) = do { d <- getMemory (cpu ^. regs') mem
+                                    ; return $ (cpu & regd' .~ d, mem) }
+  where regs' = unscopeLens regs
+        regd' = unscopeLens regd
