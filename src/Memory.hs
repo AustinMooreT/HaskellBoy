@@ -30,11 +30,12 @@ data Memory =
     _bytes :: IOUArray Word16 Word8
   }
 makeLenses ''Memory
-
 -- | Default gameboy memory on startup.
 defaultMemory :: IO Memory
 defaultMemory = do { mem <- (newArray (0, 0xFFFF) 0)
                    ; return $ Memory mem }
+
+type Address = Word16
 
 -- | Handles the special case when address 0xFF0F is read.
   -- bits 5-7 always are 1.
@@ -44,9 +45,9 @@ get0xFF0F mem = do { val <- readArray (mem ^. bytes) 0xFF0F
 
 -- | Handles the special case when address 0xFF0F is written.
   -- Cannot write bits 5-7.
-set0xFF0F :: Word8 -> Memory -> IO Memory
-set0xFF0F d mem = writeArray (mem ^. bytes) 0xFF0F (0b11100000 .|. d) >>=
-                  \_ -> return mem
+set0xFF0F :: Word8 -> Memory -> IO ()
+set0xFF0F d mem = writeArray (mem ^. bytes) 0xFF0F (0b11100000 .|. d)
+
 
 -- | Handles the special case when address 0xFF41 is read.
   -- Bit 7 always returns 1.
@@ -56,20 +57,20 @@ get0xFF41 mem = readArray (mem ^. bytes) 0xFF41 >>=
 
 -- | Handles the special case when address 0xFF41 is written.
   -- Cannot write bit 7.
-set0xFF41 :: Word8 -> Memory -> IO Memory
-set0xFF41 d mem = writeArray (mem ^. bytes) 0xFF41 (0b10000000 .|. d) >>=
-                  \_ -> return mem
+set0xFF41 :: Word8 -> Memory -> IO ()
+set0xFF41 d mem = writeArray (mem ^. bytes) 0xFF41 (0b10000000 .|. d)
 
 -- | Uses 16 bit value addr to index and return an 8 bit value in memory.
-getMemory :: Word16 -> Memory -> IO Word8
+getMemory :: Address -> Memory -> IO Word8
 getMemory 0xFF0F mem = get0xFF0F mem
 getMemory 0xFF41 mem = get0xFF41 mem
 getMemory addr   mem = readArray (mem ^. bytes) addr
 
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
-setMemory :: Word16 -> Word8 -> (Memory -> IO Memory)
+setMemory :: Address -> Word8 -> Memory -> IO ()
 setMemory 0xFF0F d mem = set0xFF0F d mem
 setMemory 0xFF41 d mem = set0xFF41 d mem
-setMemory addr   d mem = writeArray (mem ^. bytes) addr d >>=
-                         \_ -> return mem;
+setMemory addr   d mem = writeArray (mem ^. bytes) addr d
 
+moveMemory :: Address -> Address -> Memory -> IO ()
+moveMemory src dest mem = getMemory src mem >>= (\b -> setMemory dest b mem)

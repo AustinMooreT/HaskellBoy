@@ -83,28 +83,33 @@ flagToInt 32  = 5
 flagToInt 16  = 4
 flagToInt _   = -1
 
-
--- | Represents an instruction to the Gameboy's processor.
-data Instruction =
-  Instruction
-  {
-    _opcode    :: Word8,
-    _name      :: String,
-    _operation :: ((Cpu -> IO Cpu), (Memory -> IO Memory))
-  }
-makeLenses ''Instruction
--- | Instance of show for converting Instructions to a String.
-instance Show Instruction where
-  show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
+type Register  = Lens' Cpu Word8
+type Registers = Lens' Cpu Word16
 
 
-(/.~) :: (Cpu, Memory) -> (ScopedLens Cpu Word8, Word16) -> IO (Cpu, Memory)
-(/.~) (cpu, mem) (reg, addr) = do { d <- getMemory addr mem
-                                  ; return $ (cpu & reg' .~ d, mem) }
-  where reg' = unscopeLens reg
+setRegisterFromAddress :: Cpu -> Memory -> Register -> Address -> IO Cpu
+setRegisterFromAddress cpu mem reg addr = getMemory addr mem >>= \d -> return $ cpu & reg .~ d
 
-(//.~) :: (Cpu, Memory) -> (ScopedLens Cpu Word8, ScopedLens Cpu Word16) -> IO (Cpu, Memory)
-(//.~) (cpu, mem) (regd, regs) = do { d <- getMemory (cpu ^. regs') mem
-                                    ; return $ (cpu & regd' .~ d, mem) }
-  where regs' = unscopeLens regs
-        regd' = unscopeLens regd
+setRegisterFromIndexedAddress :: Cpu -> Memory -> Lens' Cpu Word8 -> Lens' Cpu Word16 -> IO Cpu
+setRegisterFromIndexedAddress cpu mem reg regs = setRegisterFromAddress cpu mem reg (cpu ^. regs)
+
+setMemoryFromRegister :: Cpu -> Memory -> Word8 -> Lens' Cpu Word16 -> IO ()
+setMemoryFromRegister cpu mem byte reg = setMemory (cpu ^. reg) byte mem
+
+setMemoryToRegisterFromRegister :: Cpu -> Memory -> ScopedLens Cpu Word8 -> ScopedLens Cpu Word16 -> IO ()
+setMemoryToRegisterFromRegister cm (d, addr) = cm \.~ (fst cm ^. d', addr)
+
+(/++!) :: Cpu -> Lens' Cpu Word8 -> Cpu
+(/++!) cpu reg = cpu & reg %~ (+1)
+
+(//++!) :: Cpu -> Lens' Cpu Word16 -> Cpu
+(//++!) cpu regs = cpu & regs %~ (+1)
+
+step :: Cpu -> Cpu
+step cpu = cpu //++! registerPC
+
+
+(\&.~) :: (Cpu, Memory) -> Lens' Cpu Word16 -> (Cpu, IO ())
+(\&.~) (cpu, mem) regs = (cpu', moveMemory (cpu ^. registerPC) (cpu ^. regs) mem)
+  where cpu' = step cpu
+

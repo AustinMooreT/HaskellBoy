@@ -19,58 +19,6 @@ import Control.Monad
 
 
 
--- | Sets the value in register r to some 8 bit value d.
-setRegister :: Register -> Word8 -> Gameboy -> Gameboy
-setRegister r d gb = gb & cpu . registerToLens r .~ d
-
--- | Sets the value in the combined registers rs to a 16 bit value d.
-setRegisters :: (Register, Register) -> Word16 -> Gameboy -> Gameboy
-setRegisters rs d gb = gb & cpu . composeRegisterLenses rs .~ d
-
-
--- | Fetches 8 bit value from register r.
-getRegister :: Register -> Gameboy -> Word8
-getRegister r gb = gb ^. cpu . registerToLens r
-
-
--- | Fetches 16 bit combined value from the registers rs.
-getRegisters :: (Register, Register) -> Gameboy -> Word16
-getRegisters rs gb = gb ^. cpu . composeRegisterLenses rs
-
-
--- | Loads data from src into dest.
-ldRegWithReg :: Register -> Register -> (Gameboy -> Gameboy)
-ldRegWithReg dest src gb = setRegister dest (getRegister src gb) gb
-
-
--- | Using addr as an index grabs an 8 bit value from memory and loads it into reg.
-ldRegWithMem :: Register -> Word16 -> (Gameboy -> IO Gameboy)
-ldRegWithMem reg addr gb = do { mem <- getMemory addr gb
-                              ; return $ setRegister reg mem gb }
-
-
-
--- | Using the 16 bit value from the combined registers rs as an index
-  -- grabs an 8 bit value from memory and loads it into r.
-ldRegWithRegRegMem :: Register -> (Register, Register) -> (Gameboy -> IO Gameboy)
-ldRegWithRegRegMem r rs gb = do { mem <- getMemory (getRegisters rs gb) gb
-                                ; return $ setRegister r mem gb}
-
-
--- | Using the combined register rs as an index set that location in memory to the value stored in r.
-ldMemRegRegWithReg :: (Register, Register) -> Register -> (Gameboy -> IO Gameboy)
-ldMemRegRegWithReg rs r gb = setMemory (getRegisters rs gb) (getRegister r gb) gb
-
-
--- | Increments a register r's value by 1 while ignoring all flags.
-incrementRegisterWithoutFlags :: Register -> (Gameboy -> Gameboy)
-incrementRegisterWithoutFlags r gb = setRegister r (getRegister r gb + 1) gb
-
-
--- | Increments the combined registers rs's value by 1.
-incrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
-incrementRegistersWithoutFlags rs gb = setRegisters rs (getRegisters rs gb + 1) gb
-
 
 -- | Using the 16 bit value stored in rs as an index set memory to the next byte from the program counter.
 ldMemRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
