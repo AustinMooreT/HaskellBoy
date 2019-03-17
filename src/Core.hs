@@ -8,7 +8,6 @@ module Core (module Core) where
 import Cpu
 import qualified Memory as Mem
 import Lib
-import Interrupts
 import Lcd
 
 import Data.Word
@@ -51,114 +50,6 @@ defaultGameboy = do { mem <- Mem.defaultMemory
                       l
                       dsp
                     }
-
-
-
--- | Represents an instruction to the Gameboy's processor.
-data Instruction =
-  Instruction
-  {
-    _opcode    :: Word8,
-    _name      :: String,
-    _time      :: (Gameboy -> Integer),
-    _operation :: (Gameboy -> IO Gameboy)
-  }
-makeLenses ''Instruction
-
-
--- | Instance of show for converting Instructions to a String.
-instance Show Instruction where
-  show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
-
-
--- | Uses 16 bit value addr to index and return an 8 bit value in memory.
-getMemory :: Word16 -> Gameboy -> IO Word8
-getMemory addr gb = Mem.getMemory addr (gb ^. memory)
-
-
--- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
-setMemory :: Word16 -> Word8 -> (Gameboy -> IO Gameboy)
-setMemory addr d gb = Mem.setMemory addr d (gb ^. memory) >>= \_ -> return gb
-
-
-
--- | Sets the value in register r to some 8 bit value d.
-setRegister :: Register -> Word8 -> Gameboy -> Gameboy
-setRegister r d gb = gb & cpu . registerToLens r .~ d
-
--- | Sets the value in the combined registers rs to a 16 bit value d.
-setRegisters :: (Register, Register) -> Word16 -> Gameboy -> Gameboy
-setRegisters rs d gb = gb & cpu . composeRegisterLenses rs .~ d
-
-
--- | Fetches 8 bit value from register r.
-getRegister :: Register -> Gameboy -> Word8
-getRegister r gb = gb ^. cpu . registerToLens r
-
-
--- | Fetches 16 bit combined value from the registers rs.
-getRegisters :: (Register, Register) -> Gameboy -> Word16
-getRegisters rs gb = gb ^. cpu . composeRegisterLenses rs
-
-
--- | Loads data from src into dest.
-ldRegWithReg :: Register -> Register -> (Gameboy -> Gameboy)
-ldRegWithReg dest src gb = setRegister dest (getRegister src gb) gb
-
-
--- | Using addr as an index grabs an 8 bit value from memory and loads it into reg.
-ldRegWithMem :: Register -> Word16 -> (Gameboy -> IO Gameboy)
-ldRegWithMem reg addr gb = do { mem <- getMemory addr gb
-                              ; return $ setRegister reg mem gb }
-
-
-
--- | Using the 16 bit value from the combined registers rs as an index
-  -- grabs an 8 bit value from memory and loads it into r.
-ldRegWithRegRegMem :: Register -> (Register, Register) -> (Gameboy -> IO Gameboy)
-ldRegWithRegRegMem r rs gb = do { mem <- getMemory (getRegisters rs gb) gb
-                                ; return $ setRegister r mem gb}
-
-
--- | Using the combined register rs as an index set that location in memory to the value stored in r.
-ldMemRegRegWithReg :: (Register, Register) -> Register -> (Gameboy -> IO Gameboy)
-ldMemRegRegWithReg rs r gb = setMemory (getRegisters rs gb) (getRegister r gb) gb
-
-
--- | Increments a register r's value by 1 while ignoring all flags.
-incrementRegisterWithoutFlags :: Register -> (Gameboy -> Gameboy)
-incrementRegisterWithoutFlags r gb = setRegister r (getRegister r gb + 1) gb
-
-
--- | Increments the combined registers rs's value by 1.
-incrementRegistersWithoutFlags :: (Register, Register) -> (Gameboy -> Gameboy)
-incrementRegistersWithoutFlags rs gb = setRegisters rs (getRegisters rs gb + 1) gb
-
-
--- | Using the 16 bit value stored in rs as an index set memory to the next byte from the program counter.
-ldMemRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
-ldMemRegRegWithData rs gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
-                               ; setMemory (getRegisters rs gb) mem gb1}
-  where gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
-
-
--- | Loads two registers r1 and r2 with data fetched from memory using the program counter.
-ldRegRegWithData :: (Register, Register) -> (Gameboy -> IO Gameboy)
-ldRegRegWithData rs gb = do { mem1 <- getMemory (getRegisters (PHI, CLO) gb1) gb1
-                            ; mem2 <- getMemory (getRegisters (PHI, CLO) gb2) gb2
-                            ; return $ setRegisters rs (combineData mem2 mem1) gb2}
-  where
-    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
-    gb2 = incrementRegistersWithoutFlags (PHI, CLO) gb1
-
-
--- | Loads a register r with data fetched from memory using the program counter.
-ldRegWithData :: Register -> (Gameboy -> IO Gameboy)
-ldRegWithData r gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb1) gb1
-                        ; return $ setRegister r mem gb1 }
-  where
-    gb1 = incrementRegistersWithoutFlags (PHI, CLO) gb
-
 
 -- | Set's a flag using one of the flag constants.
 setFlag :: Word8 -> Bool -> Gameboy -> Gameboy
@@ -681,7 +572,3 @@ testBitReg r i = \gb -> zero . sub . half $ gb
 increaseClock :: Integer -> Gameboy -> Gameboy
 increaseClock i gb = gb & clock %~ (\x -> x + i)
 
--- | Dispatches a single interrupt.
-dispatchInterrupt :: Interrupt -> (Gameboy -> IO Gameboy)
-dispatchInterrupt int gb = do { gb1 <- (push (getRegisters (PHI, CLO) gb) gb)
-                              ; return $ setRegisters (PHI, CLO) (interruptToAddress int) gb1 }
