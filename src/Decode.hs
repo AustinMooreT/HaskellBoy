@@ -11,6 +11,21 @@ import Data.Word
 import Control.Lens
 import Cpu
 
+-- | Represents an instruction to the Cpu's processor.
+data Instruction =
+  Instruction
+  {
+    _opcode    :: Word8,
+    _name      :: String,
+    _time      :: (Cpu -> Integer),
+    _operation :: (Cpu -> IO Cpu)
+  }
+makeLenses ''Instruction
+
+-- | Instance of show for converting Instructions to a String.
+instance Show Instruction where
+  show instr = (show $ instr ^. opcode) Prelude.++ (show $ instr ^. name)
+
 const4  = const 4
 const8  = const 8
 const12 = const 12
