@@ -70,7 +70,7 @@ flagToInt 32  = 5
 flagToInt 16  = 4
 flagToInt _   = -1
 
--- | Converts a register datum to an record accesor
+-- | Converts a register datum to a record accesor
 registerToFunc :: Register -> (Cpu -> Word8)
 registerToFunc A    = _registerA
 registerToFunc B    = _registerB

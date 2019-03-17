@@ -9,7 +9,7 @@ import Cpu
 import qualified Memory as Mem
 import Lib
 import Interrupts
-
+import Lcd
 
 import Data.Word
 import Control.Lens
@@ -22,14 +22,15 @@ import Control.Monad
 data Gameboy =
   Gameboy
   {
-    _cpu    :: Cpu,
-    _memory :: Mem.Memory,
-    --TODO add in LCD module after testing and documentation.
-    _clock  :: Integer,
-    _opWait :: Integer, --time left until currOp is performed on gameboy.
-    _currOp :: Gameboy -> IO Gameboy, --the current gameboy op.
-    _ime    :: Bool, -- This is the master interrupt flag.
-    _halt   :: Bool -- Flag keeping track of wether or not execution is halted.
+    _cpu     :: Cpu,
+    _memory  :: Mem.Memory,
+    _clock   :: Integer,
+    _opWait  :: Integer, --time left until currOp is performed on gameboy.
+    _currOp  :: Gameboy -> IO Gameboy, --the current gameboy op.
+    _ime     :: Bool, -- This is the master interrupt flag.
+    _halt    :: Bool, -- Flag keeping track of wether or not execution is halted.
+    _lcd     :: Lcd,
+    _dispBuf :: DisplayBuffer
   }
 makeLenses ''Gameboy
 
@@ -37,6 +38,8 @@ makeLenses ''Gameboy
 -- | Default gameboy used on startup.
 defaultGameboy :: IO Gameboy
 defaultGameboy = do { mem <- Mem.defaultMemory
+                    ; l   <- getLcd mem
+                    ; dsp <- mainBuffer
                     ; return $ Gameboy
                       defaultCpu --cpu
                       mem --memory
@@ -45,6 +48,8 @@ defaultGameboy = do { mem <- Mem.defaultMemory
                       (\gb -> return gb) --current op
                       False -- master interrupt flag.
                       False -- halt flag.
+                      l
+                      dsp
                     }
 
 

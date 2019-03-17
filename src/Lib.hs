@@ -62,3 +62,8 @@ wordToSignedInt w
 signedAddIf :: Bool -> Word8 -> Word16 -> Word16
 signedAddIf True  w8 w16 = fromIntegral $ (wordToSignedInt w8) + (fromIntegral w16)
 signedAddIf False w8 w16 = (fromIntegral w8) + (fromIntegral w16)
+
+-- | If the boolean is true set the b'th bit of a word w.
+setBitIf :: Int -> Bool -> Word8 -> Word8
+setBitIf _ False w = w
+setBitIf b True  w = setBit w b

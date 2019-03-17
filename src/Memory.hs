@@ -3,7 +3,10 @@
 
 module Memory (module Memory) where
 
+import qualified Data.ByteString.Lazy as BL
+import Data.Binary.Get
 import Control.Lens
+import Control.Monad
 import Data.Array.IO
 import Data.Word
 import Data.Bits
@@ -18,7 +21,8 @@ These are some notes on the layout of gameboy memory.
 0xD000 - 0xDFFF is more general memory (WRAMX) [This is switchable on GBC]
 0xE000 - 0xFDFF See notes on ECHO memory. (ECHO)
 0xFEA0 - 0xFEFF See notes on UNUSED memory. (UNUSED)
-0xFF00 - 0xFF7F is the IO registers (IO REGISTERS)
+0xFF00 - 0xFF7F is the IO
+registers (IO REGISTERS)
 0xFF80 - 0xFFFE is the internal CPU ram (HRAM)
 0xFFFF is the interrupt enable flags (IE REGISTER)
 -}
@@ -60,6 +64,12 @@ set0xFF41 :: Word8 -> Memory -> IO Memory
 set0xFF41 d mem = writeArray (mem ^. bytes) 0xFF41 (0b10000000 .|. d) >>=
                   \_ -> return mem
 
+-- | Handles the special case when address 0xFF44 is written.
+  -- address is set to 0. NOTE think about this more.
+set0xFF44 :: Word8 -> Memory -> IO Memory
+set0xFF44 _ mem = writeArray (mem ^. bytes) 0xFF41 0b00000000 >>=
+                  \_ -> return mem
+
 -- | Uses 16 bit value addr to index and return an 8 bit value in memory.
 getMemory :: Word16 -> Memory -> IO Word8
 getMemory 0xFF0F mem = get0xFF0F mem
@@ -73,3 +83,13 @@ setMemory 0xFF41 d mem = set0xFF41 d mem
 setMemory addr   d mem = writeArray (mem ^. bytes) addr d >>=
                          \_ -> return mem;
 
+memBegin :: Word16
+memBegin = 0x0000
+
+memEnd :: Word16
+memEnd = 0xFFFF
+
+loadMemorySnapshot :: FilePath -> Memory -> IO Memory
+loadMemorySnapshot fp mem = do { fileData <- BL.readFile fp
+                               ; memList  <- sequence $ map (\(byte, addr) -> setMemory addr byte mem) $ zip (BL.unpack fileData) [memBegin .. memEnd]
+                               ; return $ head memList }

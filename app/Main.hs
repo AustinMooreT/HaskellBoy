@@ -1,8 +1,10 @@
 module Main where
 
-import Lib
-import Control.Lens
+import Lcd
+import Memory
 
-main :: IO Gameboy
-main = debugMode (runGameboyNSteps 0)
+main :: IO ()
+main = do { tetris <- defaultMemory >>= \x -> loadMemorySnapshot "/home/maurice/test.txt" x
+          ; db     <- mainBuffer
+          ; foo tetris db }
 

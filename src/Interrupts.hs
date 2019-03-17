@@ -67,10 +67,9 @@ getDispatchableInterrupts mem = do { enabled   <- getEnabledInterrupts mem
                                    ; return $ intersect enabled triggered }
 
 -- | Returns the interrupt with thi highest priority.
-  -- NOTE/TODO maybe make this [Interrupt] -> Maybe Interrupt,
-  -- since [] will make the program crash.
-getHighestPriorityInterrupt :: [Interrupt] -> Interrupt
-getHighestPriorityInterrupt is = minimum is
+getHighestPriorityInterrupt :: [Interrupt] -> Maybe Interrupt
+getHighestPriorityInterrupt [] = Nothing
+getHighestPriorityInterrupt is = Just $ minimum is
 
 -- | Converts a given Interrupt to its appropriate address.
 interruptToAddress :: Interrupt -> Word16

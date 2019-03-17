@@ -5,6 +5,7 @@ import Decode
 import Cpu
 import BootRom
 import Lib
+import Lcd
 
 import Control.Lens
 
@@ -16,7 +17,7 @@ fetchNextInstr gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb) gb
                        ; return $ decodeOp mem }
 
 stepGameboy :: Gameboy -> IO Gameboy
-stepGameboy gb = do { instr <- fetchNextInstr gb
+stepGameboy gb = do { instr <- Execution.fetchNextInstr gb
                     ; evGB  <- evalInstruction gb instr
                     ; return $ gb1 evGB }
   where gb1 = incrementRegistersWithoutFlags (PHI, CLO)
@@ -28,5 +29,6 @@ runGameboyNSteps :: Int -> IO Gameboy
 runGameboyNSteps n = do { gb   <- defaultGameboy
                         ; boot <- loadBootRom gb
                         ; stepNGameboy n boot }
+
 
 

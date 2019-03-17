@@ -262,5 +262,3 @@ loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x0001 0xFE gb_) .|
                  (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb
 
--- | This is for testing purposes.
---loadTetrisSnaphsot
