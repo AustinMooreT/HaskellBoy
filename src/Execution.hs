@@ -39,5 +39,7 @@ executeTillCycle cycles cpu mem
                        (cycles - (instr ^. time $ cpu))
                        (fst results) (snd results) }
 
---runTillHblank :: Cpu -> Memory -> IO (Cpu, Memory)
---runTillHblank cpu mem =
+lcdModeToTiming :: LcdMode -> Integer
+lcdModeToTiming HBlank    = 204
+lcdModeToTiming OamSearch = 80
+

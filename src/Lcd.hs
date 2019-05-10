@@ -465,6 +465,12 @@ setLcd lcd = \mem -> setLcdControl        (lcd ^. lcdControl)   mem >>
 
 {- ^ END GLOBAL LCD -}
 
+{- | BEGIN LCD STATE TRANSITIONS -}
+
+-- NOTE/TODO Idk if I want this here.
+
+{- ^ END LCD STATE TRANSITIONS -}
+
 {- | BEGIN TILE -}
 
 -- | Data structure representing a row in a tile.
