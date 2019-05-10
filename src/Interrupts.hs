@@ -8,7 +8,7 @@ import Data.Bits
 import Data.List
 
 data Interrupt = Joypad | Serial | Timer | LCDStat | VBlank
-  deriving (Eq)
+  deriving (Eq, Show)
 
 -- | Interrupts are ordered by who has the highest priority when dispatching interrupts.
 instance Ord Interrupt where
@@ -78,3 +78,8 @@ interruptToAddress Serial  = 0x0058
 interruptToAddress Timer   = 0x0050
 interruptToAddress LCDStat = 0x0048
 interruptToAddress VBlank  = 0x0040
+
+--dispatchInterrupt :: Interrupt -> (Gameboy -> IO Gameboy)
+--dispatchInterrupt int gb = do { gb1 <- (push (getRegisters (PHI, CLO) gb) gb)
+--
+--; return $ setRegisters (PHI, CLO) (interruptToAddress int) gb1 }

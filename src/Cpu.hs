@@ -528,10 +528,10 @@ ldFFRegAddrReg d s mem cpu = setMemory (0xFF00 + (toWord16 $ getRegister d cpu))
 -- | TODO double check logic also document this bad boy.
 ldMemDataWithRegReg :: (Register, Register) -> Memory -> Cpu -> IO Memory
 ldMemDataWithRegReg (r1, r2) mem cpu = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
-                                         ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
-                                         ; let combinedMem = combineData mem1 mem2
-                                           in  do { cpuMem1 <- setMemory combinedMem (getRegister r2 cpu2) mem
-                                                  ; setMemory (combinedMem + 1) (getRegister r1 cpu) cpuMem1 }}
+                                          ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
+                                          ; let combinedMem = combineData mem1 mem2
+                                            in  do { cpuMem1 <- setMemory combinedMem (getRegister r2 cpu2) mem
+                                                   ; setMemory (combinedMem + 1) (getRegister r1 cpu) cpuMem1 }}
   where
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
     cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1

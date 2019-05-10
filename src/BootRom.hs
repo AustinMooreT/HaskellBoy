@@ -1,10 +1,9 @@
 module BootRom (module BootRom) where
 
-import Core
 import Lib
+import Memory
 
-
-loadBootRom :: Gameboy -> IO Gameboy
+loadBootRom :: Memory -> IO Memory
 loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
                  (\gb_ -> setMemory 0x00FE 0xE0 gb_) .|
                  (\gb_ -> setMemory 0x00FD 0x01 gb_) .|

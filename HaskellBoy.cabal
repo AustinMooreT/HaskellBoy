@@ -28,13 +28,11 @@ source-repository head
 library
   exposed-modules:
                   Lib
-                , Core
                 , Cpu
                 , Debug
                 , Decode
                 , Memory
                 , Execution
-                , SdlFront
                 , Lcd
   other-modules:
       Paths_HaskellBoy

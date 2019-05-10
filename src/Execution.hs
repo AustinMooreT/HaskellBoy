@@ -1,34 +1,43 @@
 module Execution (module Execution) where
 
-import Core
 import Decode
 import Cpu
+import Memory
 import BootRom
 import Lib
 import Lcd
 
+import Data.Word
+
 import Control.Lens
 
-evalInstruction :: Gameboy -> Instruction -> IO Gameboy
-evalInstruction gb inst = gb & inst ^. operation
 
-fetchNextInstr :: Gameboy -> IO Instruction
-fetchNextInstr gb = do { mem <- getMemory (getRegisters (PHI, CLO) gb) gb
-                       ; return $ decodeOp mem }
+-- | TODO this is honestly kinda ugly. I'd like to maybe change this up someday.
+  -- Applys an operation to the cpu/memory
+applyOp :: Operation -> Cpu -> Memory -> IO (Cpu, Memory)
+applyOp (OpCpuOpCpu f) cpu mem = f cpu >>= \x -> return (x, mem)
+applyOp (OpCpuMemOpCpu f) cpu mem = f mem cpu >>= \x -> return (x, mem)
+applyOp (OpCpuMemOpMem f) cpu mem = f mem cpu >>= \x -> return (cpu, x)
+applyOp (OpCpuMemOpCpuMem f) cpu mem = f mem cpu
 
-stepGameboy :: Gameboy -> IO Gameboy
-stepGameboy gb = do { instr <- Execution.fetchNextInstr gb
-                    ; evGB  <- evalInstruction gb instr
-                    ; return $ gb1 evGB }
-  where gb1 = incrementRegistersWithoutFlags (PHI, CLO)
+-- | Given an instruction executes it.
+executeInstr :: Instruction -> Cpu -> Memory -> IO (Cpu, Memory)
+executeInstr instr cpu mem = applyOp (instr ^. operation) cpu mem
 
-stepNGameboy :: Int -> (Gameboy -> IO Gameboy)
-stepNGameboy n = Prelude.foldl (.|) (fixGB id) $ Prelude.replicate n stepGameboy
+-- | Fetches the next instruction from memory.
+fetchInstr :: Cpu -> Memory -> IO Instruction
+fetchInstr cpu mem = do { byte <- getMemory (getRegisters (PHI, CLO) cpu) mem
+                        ; return $ decodeOp byte }
 
-runGameboyNSteps :: Int -> IO Gameboy
-runGameboyNSteps n = do { gb   <- defaultGameboy
-                        ; boot <- loadBootRom gb
-                        ; stepNGameboy n boot }
+-- | Executes to a given cycle.
+executeTillCycle :: Integer -> Cpu -> Memory -> IO (Cpu, Memory)
+executeTillCycle cycles cpu mem
+  | cycles <= 0 = return (cpu, mem)
+  | otherwise   = do { instr   <- fetchInstr cpu mem
+                     ; results <- executeInstr instr cpu mem
+                     ; executeTillCycle
+                       (cycles - (instr ^. time $ cpu))
+                       (fst results) (snd results) }
 
-
-
+--runTillHblank :: Cpu -> Memory -> IO (Cpu, Memory)
+--runTillHblank cpu mem =
