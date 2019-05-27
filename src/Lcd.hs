@@ -5,18 +5,13 @@
 
 module Lcd (module Lcd) where
 
-import Cpu
 import Memory
 import Lib
 
 import Graphics.Gloss
 import Control.Lens
-import Control.Monad
 import Data.Word
 import Data.Bits
-import Data.Array.IO
-import Data.Array.MArray
-import Data.Array.IArray
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array
 import Foreign.ForeignPtr
@@ -208,13 +203,13 @@ getLcdControl gb = do { byte <- getMemory 0xFF40 gb
 -- | Converts the lcd control data structure into
   -- an 8 bit byte to be written to memory.
 lcdControlToByte :: LcdControl -> Word8
-lcdControlToByte lc = maybeSetBit8 (lc ^. lcdEnabled) 7 .
-                      maybeSetBit8 (lc ^. windowTileMapSelect . bankBit) 6 .
-                      maybeSetBit8 (lc ^. windowEnabled) 5                                .
-                      maybeSetBit8 (snd $ lc ^. bgWindowTileSelect) 4  .
-                      maybeSetBit8 (lc ^. bgTileMapSelect . bankBit) 3     .
-                      maybeSetBit8 (spriteSizeDecodeBit $ lc ^. spriteSize) 2             .
-                      maybeSetBit8 (lc ^. spritesEnabled) 1                               .
+lcdControlToByte lc = maybeSetBit8 (lc ^. lcdEnabled) 7                       .
+                      maybeSetBit8 (lc ^. windowTileMapSelect . bankBit) 6    .
+                      maybeSetBit8 (lc ^. windowEnabled) 5                    .
+                      maybeSetBit8 (snd $ lc ^. bgWindowTileSelect) 4         .
+                      maybeSetBit8 (lc ^. bgTileMapSelect . bankBit) 3        .
+                      maybeSetBit8 (spriteSizeDecodeBit $ lc ^. spriteSize) 2 .
+                      maybeSetBit8 (lc ^. spritesEnabled) 1                   .
                       maybeSetBit8 (lc ^. bgEnabled) 0 $ 0b00000000
 
 
@@ -231,7 +226,7 @@ setLcdControl l m = setMemory 0xFF40 (lcdControlToByte l) m
   -- VBlank - Vertical blanking period interrupt is triggered.
   -- OamSearch - TODO figure out what this is.
   -- LcdTransfer - TODO figure out what this is.
-data LcdMode = HBlank | VBlank | OamSearch | LcdTransfer
+data LcdMode = HBlank | VBlank | OamSearch | LcdTransfer deriving Eq
 
 -- | LcdStatus represents the overall status of the lcd.
   -- coincidenceInterruptEnabled - TODO figure out what this is.
@@ -467,7 +462,28 @@ setLcd lcd = \mem -> setLcdControl        (lcd ^. lcdControl)   mem >>
 
 {- | BEGIN LCD STATE TRANSITIONS -}
 
--- NOTE/TODO Idk if I want this here.
+-- | Transitions the lcd mode to the next value in the drawing loop.
+modeTransition :: Lcd -> Lcd
+modeTransition lcd
+  | lcd ^. lcdStatus . modeFlag == OamSearch   = lcd & lcdStatus . modeFlag .~ LcdTransfer
+  | lcd ^. lcdStatus . modeFlag == LcdTransfer = lcd & lcdStatus . modeFlag .~ HBlank
+  | lcd ^. lcdStatus . modeFlag == VBlank      = lcd & lcdStatus . modeFlag .~ OamSearch
+  | otherwise                                  = if lcd ^. ly == 14 then
+                                                   lcd & lcdStatus . modeFlag .~ VBlank
+                                                 else
+                                                   lcd & lcdStatus . modeFlag .~ OamSearch
+
+-- | Updates the ly counter for every line drawn.
+lyUpdate :: Lcd -> Lcd
+lyUpdate lcd
+  | lcd ^. lcdStatus . modeFlag == HBlank = lcd & ly %~ (+1)
+  | lcd ^. lcdStatus . modeFlag == VBlank = lcd & ly .~ 0
+  | otherwise                             = lcd
+
+
+-- | Steps the lcd forward as a whole
+stepLcd :: Lcd -> Lcd
+stepLcd lcd = modeTransition . lyUpdate $ lcd
 
 {- ^ END LCD STATE TRANSITIONS -}
 
@@ -864,4 +880,6 @@ displayGlossBuffer b True  = display
 
 {- ^ END DISPLAY BUFFER -}
 
+-- | NOTE/TODO Looking at this on 05/17/2019, and have no idea what it's for.
+  -- Looks like I was starting to make a binary tree. I won't remove it yet for fear of realizing I needed it.
 data DList = NULL | Node DList DList
