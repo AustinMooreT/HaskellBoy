@@ -34,6 +34,7 @@ library
                 , Memory
                 , Execution
                 , Lcd
+                , BootRom
   other-modules:
       Paths_HaskellBoy
   hs-source-dirs:

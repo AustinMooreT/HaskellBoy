@@ -2,9 +2,11 @@
 
 module Debug (module Debug) where
 
-import Core
 import Cpu
+import Decode
 import Execution
+import Lcd
+import BootRom
 
 import Control.Lens
 import System.Console.ANSI as A
@@ -66,52 +68,3 @@ prettyPrintCpu cpu_ = evalPrintRegisters [(prettyPrintReg A cpu_),
                                           (prettyPrintRegReg (H,L) cpu_),
                                           (prettyPrintRegReg (SHI,PLO) cpu_),
                                           (prettyPrintRegReg (PHI,CLO) cpu_)]
-
-prettyPrintLineOfMemory :: Word16 -> Gameboy -> IO String
-prettyPrintLineOfMemory addr gb = do { mem <- getMemory addr gb
-                                     ; return ((replicate (4 - (length (showHex addr ""))) ' ') ++
-                                                (showHex addr "") ++
-                                                " : " ++ (showHex mem "")) }
-
-prettyPrintMem :: Word16 -> Gameboy -> [IO String]
-prettyPrintMem addr gb = let printaddr = \addr_ -> prettyPrintLineOfMemory addr_ gb
-                         in map printaddr $ lower ++ [addr] ++ higher
-  where addrs  = [1 .. 5]
-        lower  = map (addr-) (reverse addrs)
-        higher = map (addr+) addrs
-
-attachTagsPC :: Gameboy -> [IO String] -> [IO String]
-attachTagsPC gb strs =  let tagSurround = \istr -> do { str <- istr
-                                                   ; return $ str ++ (replicate 25 ' ') }
-                            tagMain     = \istr -> do { str <- istr
-                                                      ; instr <- fetchNextInstr gb
-                                                      ; let instrText = instr ^. name
-                                                        in return $ str ++
-                                                           " <-- " ++
-                                                           instrText ++
-                                                           (replicate (21 - (length instrText)) ' ') }
-
-                        in (map tagSurround (take 5 strs)) ++
-                           (map tagMain (take 1 . drop 5 $ strs)) ++
-                           (map tagSurround (drop 6 strs))
-
-testMem :: Gameboy -> [IO String] -> IO ()
-testMem gb x = do { strs <- sequence (attachTagsPC gb x)
-                  ; print_ <- foldl (>>) (return ())
-                              (map (\x -> putStrLn x) strs)
-                  ; return print_ }
-
-prettyPrintGb :: IO Gameboy -> IO ()
-prettyPrintGb igb = do { gb <- igb
-                       ; let pCpu = prettyPrintCpu (gb ^. cpu)
-                             pMem = testMem gb (prettyPrintMem (getRegisters (PHI, CLO) gb) gb)
-                         in pCpu >> putStrLn "" >> pMem }
-
-debugMode :: IO Gameboy -> IO Gameboy
-debugMode igb = do { gb    <- igb
-                   ; _     <- putStrLn "step: "
-                   ; steps <- getLine
-                   ; sgb   <- stepNGameboy (read steps) gb
-                   ; _     <- prettyPrintGb (return sgb)
-                   ; fgb   <- debugMode (return sgb)
-                   ; return fgb }

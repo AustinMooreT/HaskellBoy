@@ -5,8 +5,8 @@
 
 module Lcd (module Lcd) where
 
-import Memory
 import Lib
+import Memory
 
 import Graphics.Gloss
 import Control.Lens
@@ -316,10 +316,11 @@ bitsToColor True True   = Black
 
 -- | Given a shade convert it to a tuple of the coresponding bits.
 colorToBits :: Shade -> (Bool, Bool)
-colorToBits White     = (False, False)
-colorToBits LightGray = (False, True)
-colorToBits DarkGray  = (True, False)
-colorToBits Black     = (True, True)
+colorToBits White       = (False, False)
+colorToBits LightGray   = (False, True)
+colorToBits DarkGray    = (True, False)
+colorToBits Black       = (True, True)
+colorToBits Transparent = (False, False) -- NOTE This was just a hack.
 
 {- ^ END SHADE -}
 
@@ -484,6 +485,8 @@ lyUpdate lcd
 -- | Steps the lcd forward as a whole
 stepLcd :: Lcd -> Lcd
 stepLcd lcd = modeTransition . lyUpdate $ lcd
+
+
 
 {- ^ END LCD STATE TRANSITIONS -}
 

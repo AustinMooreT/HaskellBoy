@@ -2,10 +2,15 @@
 
 module Interrupts (module Interrupts) where
 
+
+import Cpu
 import Memory
+import qualified Lcd as Lcd
+
 import Data.Word
 import Data.Bits
 import Data.List
+import Control.Lens
 
 data Interrupt = Joypad | Serial | Timer | LCDStat | VBlank
   deriving (Eq, Show)
@@ -38,6 +43,11 @@ instance Ord Interrupt where
   compare VBlank  LCDStat = LT
   compare VBlank  VBlank  = EQ
 
+generateVBlankInterrupt :: Lcd.Lcd -> Maybe Interrupt
+generateVBlankInterrupt lcd
+  | lcd ^. Lcd.lcdStatus . Lcd.modeFlag == Lcd.VBlank = Just VBlank
+  | otherwise = Nothing
+
 -- | Converts an Interrupt into an 8 bit mask.
 interruptToMask :: Interrupt -> Word8
 interruptToMask Joypad  = 0b000010000
@@ -45,6 +55,9 @@ interruptToMask Serial  = 0b000001000
 interruptToMask Timer   = 0b000000100
 interruptToMask LCDStat = 0b000000010
 interruptToMask VBlank  = 0b000000001
+
+enableInterrupts :: Cpu -> Memory -> IO (Cpu, Memory)
+enableInterrupts cpu mem = map (\x -> x >>= \y -> interruptToMask y) [generateVBlankInterrupt (getLcd mem)]
 
 -- | Given a byte it determines what interupts are set by the byte using their masks.
 decodeInterruptByte :: Word8 -> [Interrupt]
@@ -79,7 +92,6 @@ interruptToAddress Timer   = 0x0050
 interruptToAddress LCDStat = 0x0048
 interruptToAddress VBlank  = 0x0040
 
---dispatchInterrupt :: Interrupt -> (Gameboy -> IO Gameboy)
---dispatchInterrupt int gb = do { gb1 <- (push (getRegisters (PHI, CLO) gb) gb)
---
---; return $ setRegisters (PHI, CLO) (interruptToAddress int) gb1 }
+dispatchInterrupt :: Interrupt -> Cpu -> Memory -> IO (Cpu, Memory)
+dispatchInterrupt int cpu mem = do { cpu' <- (push (getRegisters (PHI, CLO) cpu) mem cpu)
+                                   ; return $ setRegisters (PHI, CLO) (interruptToAddress int) cpu' }
