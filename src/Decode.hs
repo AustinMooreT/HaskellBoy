@@ -276,7 +276,7 @@ decodeOp 0xE0 = Instruction 0xE0 "LDH (a8), A" const12 $ h $ (\mem -> (\cpu -> l
 --TODO 0xE1
 decodeOp 0xE2 = Instruction 0xE2 "LD (C), A" const8 $ h $ ldFFRegAddrReg C A
 --TODO 0xE3 - E9
-decodeOp 0xEA = Instruction 0xEA "LD (a16), A" const16 $ h $ ldMemDataWithReg A
+decodeOp 0xEA = Instruction 0xEA "LD (a16), A" const16 $ j $ ldMemDataWithReg A
 --TODO 0xEB - 0xEF
 decodeOp 0xF0 = Instruction 0xF0 "LDH A, (a8)" const12 $ g $ (\mem -> (\cpu -> ldAWithFFAndMemOffset cpu mem))
 --TODO 0xF1 - 0xFD

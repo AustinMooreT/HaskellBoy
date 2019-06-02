@@ -469,7 +469,7 @@ modeTransition lcd
   | lcd ^. lcdStatus . modeFlag == OamSearch   = lcd & lcdStatus . modeFlag .~ LcdTransfer
   | lcd ^. lcdStatus . modeFlag == LcdTransfer = lcd & lcdStatus . modeFlag .~ HBlank
   | lcd ^. lcdStatus . modeFlag == VBlank      = lcd & lcdStatus . modeFlag .~ OamSearch
-  | otherwise                                  = if lcd ^. ly == 14 then
+  | otherwise                                  = if lcd ^. ly == 144 then
                                                    lcd & lcdStatus . modeFlag .~ VBlank
                                                  else
                                                    lcd & lcdStatus . modeFlag .~ OamSearch
@@ -485,7 +485,6 @@ lyUpdate lcd
 -- | Steps the lcd forward as a whole
 stepLcd :: Lcd -> Lcd
 stepLcd lcd = modeTransition . lyUpdate $ lcd
-
 
 
 {- ^ END LCD STATE TRANSITIONS -}
@@ -858,7 +857,6 @@ renderScanLine :: Memory -> DisplayBuffer -> IO DisplayBuffer
 renderScanLine mem db = do { lcd <- getLcd mem
                            ; pal <- getBackgroundPalette mem
                            ; bgm <- getBackgroundMap (lcd ^. lcdControl . bgTileMapSelect) (lcd ^. lcdControl . bgWindowTileSelect) mem pal
-                           ; _   <- setLY ((lcd ^. ly) + 1) mem
                            ; renderBufferLine
                              (renderLcdBgScanline (lcd ^. scrollx) (lcd ^. scrolly) (lcd ^. ly) bgm)
                              (lcd ^. ly)
@@ -880,6 +878,7 @@ displayGlossBuffer b True  = display
                              (InWindow "BestWindow" (1000,1000) (0,0)) white
                              (scale 5.0 5.0 $ bitmapOfForeignPtr (b ^. width) (b ^. height)
                                (BitmapFormat TopToBottom PxRGBA) (b ^. forPtr) False)
+
 
 {- ^ END DISPLAY BUFFER -}
 

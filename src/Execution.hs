@@ -1,14 +1,16 @@
 module Execution (module Execution) where
 
-import Decode
+
 import Cpu
-import Memory
-import BootRom
 import Lib
 import Lcd
+import Memory
+import Decode
+import BootRom
+import qualified Interrupts as INT
 
 import Data.Word
-
+import Numeric
 import Control.Lens
 
 {- NOTE/TODO alot of the stuff in this file might not stick around in here.
@@ -28,8 +30,16 @@ applyOp (OpCpuMemOpCpuMem f) cpu mem = f mem cpu
 
 -- | Given an instruction executes it.
 executeInstr :: Instruction -> Cpu -> Memory -> IO (Cpu, Memory)
-executeInstr instr cpu mem = do { cpumem <- applyOp (instr ^. operation) cpu mem
-                                ; return (incrementRegistersWithoutFlags (PHI, CLO) (fst cpumem), (snd cpumem)) }
+executeInstr instr cpu mem = do { cpumem  <- applyOp (instr ^. operation) cpu mem
+                                ; cpumem' <- return (incrementRegistersWithoutFlags (PHI, CLO) (fst cpumem), (snd cpumem))
+                                ; lcd     <- getLcd (snd cpumem')
+                                --; _ <- putStrLn ("Instr: " ++ (instr ^. name)) >>
+                                --putStrLn ("H: " ++ (show $ getRegister H (fst cpumem')))
+                                -- ; _       <- putStrLn $ "LY: " ++ (show $ lcd ^. ly)
+                                -- ; _       <- putStrLn $ "A: " ++ (show $ getRegister A (fst cpumem'))
+                                --; nb      <- getMemory (getRegisters (PHI, CLO) (fst cpumem')) (snd cpumem')
+                                --; _       <- putStrLn (showHex nb "")
+                                ; INT.checkAndEvalInterrupts (fst cpumem') (snd cpumem') }
 
 -- | Fetches the next instruction from memory.
 fetchInstr :: Cpu -> Memory -> IO Instruction
@@ -65,10 +75,18 @@ lcdModeToTiming VBlank      = const 4560 -- NOTE this may be wildly inaccurate
 executeLcdMode :: LcdMode -> Cpu -> Memory -> IO (Cpu, Memory)
 executeLcdMode mode cpu mem = executeTillCycle (lcdModeToTiming mode) cpu mem
 
+executeTillHBlank :: Cpu -> Memory -> IO (Cpu, Memory)
+executeTillHBlank cpu mem = do { lcd     <- getLcd mem
+                               ; cpumem' <- executeTillCycle (lcdModeToTiming $ lcd ^. lcdStatus . modeFlag) cpu mem
+                               ; lcd'    <- getLcd mem
+                               ; mem'    <- setLcd (stepLcd lcd') (snd cpumem')
+                               ; lcd''   <- getLcd mem'
+                               ; if (lcd'' ^. lcdStatus . modeFlag) /= HBlank then
+                                   executeTillHBlank (fst cpumem') (snd cpumem')
+                                 else
+                                   return cpumem' }
+
 -- | Execute till lcd transition TODO this is kinda tentative thing here.
 runSystem :: Cpu -> Memory -> IO (Cpu, Memory)
-runSystem cpu mem = do { lcd     <- getLcd mem
-                       ; cpumem' <- executeTillCycle (lcdModeToTiming $ lcd ^. lcdStatus . modeFlag) cpu mem
-                       ; mem'    <- setLcd (stepLcd lcd) (snd cpumem')
-                       ; return ((fst cpumem'), mem') }
+runSystem cpu mem = executeTillHBlank cpu mem
 

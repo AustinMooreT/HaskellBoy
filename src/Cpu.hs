@@ -5,6 +5,7 @@ module Cpu (module Cpu) where
 
 import Lib
 import Memory
+import Lcd -- TODO remove this.
 
 import Data.Word
 import Data.Bits
@@ -537,11 +538,13 @@ ldMemDataWithRegReg (r1, r2) mem cpu = do { mem1 <- getMemory (getRegisters (PHI
     cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
 
 -- | TODO document this thing.
-ldMemDataWithReg :: Register -> Memory -> Cpu -> IO Memory
+ldMemDataWithReg :: Register -> Memory -> Cpu -> IO (Cpu, Memory)
 ldMemDataWithReg r mem cpu = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
-                               ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
-                               ; let combinedMem = combineData mem1 mem2
-                                 in setMemory combinedMem (getRegister r cpu2) mem }
+                                ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
+                                ; mem3 <- let combinedMem = combineData mem1 mem2
+                                           in setMemory combinedMem (getRegister r cpu2) mem
+                                ; return (cpu2, mem3) }
+
   where
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
     cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
@@ -670,7 +673,7 @@ ccf cpu = (setFlag carryFlag (not $ getFlag cpu carryFlag)) . (setFlag (halfCarr
 -- | TODO We want the docs gotta get those docs.
 cp8 :: Cpu -> Memory -> IO Cpu
 cp8 cpu mem = do { d <- getMemory (getRegisters (PHI, CLO) cpu1) mem
-                ; return $ subWithFlags8 (getRegister A cpu) d (\_ -> \cpu2 -> cpu2) cpu1 }
+                 ; return $ subWithFlags8 (getRegister A cpu) d (\_ -> \cpu2 -> cpu2) cpu1 }
   where cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
 
 -- | TODO docs pls.

@@ -10,6 +10,7 @@ import qualified Lcd as Lcd
 import Data.Word
 import Data.Bits
 import Data.List
+import Data.Maybe
 import Control.Lens
 
 data Interrupt = Joypad | Serial | Timer | LCDStat | VBlank
@@ -50,14 +51,11 @@ generateVBlankInterrupt lcd
 
 -- | Converts an Interrupt into an 8 bit mask.
 interruptToMask :: Interrupt -> Word8
-interruptToMask Joypad  = 0b000010000
-interruptToMask Serial  = 0b000001000
-interruptToMask Timer   = 0b000000100
-interruptToMask LCDStat = 0b000000010
-interruptToMask VBlank  = 0b000000001
-
-enableInterrupts :: Cpu -> Memory -> IO (Cpu, Memory)
-enableInterrupts cpu mem = map (\x -> x >>= \y -> interruptToMask y) [generateVBlankInterrupt (getLcd mem)]
+interruptToMask Joypad  = 0b00010000
+interruptToMask Serial  = 0b00001000
+interruptToMask Timer   = 0b00000100
+interruptToMask LCDStat = 0b00000010
+interruptToMask VBlank  = 0b00000001
 
 -- | Given a byte it determines what interupts are set by the byte using their masks.
 decodeInterruptByte :: Word8 -> [Interrupt]
@@ -73,11 +71,29 @@ getEnabledInterrupts mem = getMemory 0xFFFF mem >>= \b -> return $ decodeInterru
 getTriggeredInterrupts :: Memory -> IO [Interrupt]
 getTriggeredInterrupts mem = getMemory 0xFF0F mem >>= \b -> return $ decodeInterruptByte b
 
+-- | Sets the list of triggered interrupts
+setTriggeredInterrupts :: [Interrupt] -> Memory -> IO Memory
+setTriggeredInterrupts ints mem = setMemory 0xFF0F (foldl (.|.) 0 $ map (interruptToMask) ints) mem
+
 -- | Gets the list of interrupts that need to be handled.
 getDispatchableInterrupts :: Memory -> IO [Interrupt]
 getDispatchableInterrupts mem = do { enabled   <- getEnabledInterrupts mem
                                    ; triggered <- getTriggeredInterrupts mem
                                    ; return $ intersect enabled triggered }
+
+enableInterrupts :: Memory -> IO Memory
+enableInterrupts mem = do { lcd <- Lcd.getLcd mem
+                          ; setTriggeredInterrupts (
+                              map (fromJust) (filter (isJust)
+                                               [generateVBlankInterrupt lcd])) mem }
+
+getIMEFlag :: Memory -> IO Bool
+getIMEFlag mem = getMemory 0xFFFF mem >>= \x -> return $ (x .&. 0b00100000) == 0b00100000
+
+setIMEFlag :: Bool -> Memory -> IO Memory
+setIMEFlag bool mem
+  | True      = getMemory 0xFFFF mem >>= \x -> setMemory 0xFFFF (x .|. 0b00100000) mem
+  | otherwise = getMemory 0xFFFF mem >>= \x -> setMemory 0xFFFF (x .&. 0b00011111) mem
 
 -- | Returns the interrupt with thi highest priority.
 getHighestPriorityInterrupt :: [Interrupt] -> Maybe Interrupt
@@ -94,4 +110,22 @@ interruptToAddress VBlank  = 0x0040
 
 dispatchInterrupt :: Interrupt -> Cpu -> Memory -> IO (Cpu, Memory)
 dispatchInterrupt int cpu mem = do { cpu' <- (push (getRegisters (PHI, CLO) cpu) mem cpu)
-                                   ; return $ setRegisters (PHI, CLO) (interruptToAddress int) cpu' }
+                                   ; return $ (setRegisters (PHI, CLO) (interruptToAddress int) cpu', mem) }
+
+checkAndEvalInterrupts :: Cpu -> Memory -> IO (Cpu, Memory)
+checkAndEvalInterrupts cpu mem = getIMEFlag mem >>=
+                                 \x ->
+                                   if x then
+                                     do { mem'  <- enableInterrupts mem
+                                        ; ints  <- getDispatchableInterrupts mem'
+                                        ; mem'' <- setIMEFlag False mem'
+                                        ; _     <- putStrLn "Check And Eval Ints"
+                                        ; let int = getHighestPriorityInterrupt ints
+                                          in if isNothing int then
+                                               return (cpu, mem'')
+                                             else
+                                               dispatchInterrupt (fromJust int) cpu mem }
+                                   else
+                                     return (cpu, mem)
+
+
