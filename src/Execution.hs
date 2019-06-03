@@ -32,9 +32,9 @@ applyOp (OpCpuMemOpCpuMem f) cpu mem = f mem cpu
 executeInstr :: Instruction -> Cpu -> Memory -> IO (Cpu, Memory)
 executeInstr instr cpu mem = do { cpumem  <- applyOp (instr ^. operation) cpu mem
                                 ; cpumem' <- return (incrementRegistersWithoutFlags (PHI, CLO) (fst cpumem), (snd cpumem))
-                                ; lcd     <- getLcd (snd cpumem')
+                                --; lcd     <- getLcd (snd cpumem')
                                 --; _ <- putStrLn ("Instr: " ++ (instr ^. name)) >>
-                                --putStrLn ("H: " ++ (show $ getRegister H (fst cpumem')))
+                                             --putStrLn ("H: " ++ (show $ getRegister H (fst cpumem')))
                                 -- ; _       <- putStrLn $ "LY: " ++ (show $ lcd ^. ly)
                                 -- ; _       <- putStrLn $ "A: " ++ (show $ getRegister A (fst cpumem'))
                                 --; nb      <- getMemory (getRegisters (PHI, CLO) (fst cpumem')) (snd cpumem')
@@ -81,6 +81,10 @@ executeTillHBlank cpu mem = do { lcd     <- getLcd mem
                                ; lcd'    <- getLcd mem
                                ; mem'    <- setLcd (stepLcd lcd') (snd cpumem')
                                ; lcd''   <- getLcd mem'
+                               ; if (lcd'' ^. lcdStatus . modeFlag) == VBlank then
+                                   putStrLn (show $ (getRegister H (fst cpumem')))
+                                 else
+                                   return ()
                                ; if (lcd'' ^. lcdStatus . modeFlag) /= HBlank then
                                    executeTillHBlank (fst cpumem') (snd cpumem')
                                  else

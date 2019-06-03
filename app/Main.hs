@@ -14,7 +14,11 @@ import Control.Lens
 --displayGlossBuffer :: DisplayBuffer -> Bool -> IO ()
 
 main :: IO ()
-main = runGlossBuffer mainBuffer (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))) True
+main = profiling $ return (mainBuffer, (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))))
+
+profiling :: IO (IO DisplayBuffer, IO (Cpu, Memory)) -> IO ()
+profiling d = do {d' <- d
+                 ; profiling $ runToHBlank d'}
 
 render :: Bool -> (IO DisplayBuffer, IO (Cpu, Memory)) -> IO Picture
 render False cb = db >>= \b -> return (bitmapOfForeignPtr (b ^. width) (b ^. height)
@@ -45,17 +49,17 @@ stepper _ _ m = runToHBlank m
 
 
 runToHBlank :: (IO DisplayBuffer, IO (Cpu, Memory)) -> IO (IO DisplayBuffer, IO (Cpu, Memory))
-runToHBlank dbc = do { cpumem'  <- cpumem
-                     ; db       <- d
-                     ; cpumem'' <- runSystem (fst cpumem') (snd cpumem')
-                     ; lcd      <- (getLcd (snd cpumem''))
-                     ; display  <-
+runToHBlank dbc = do { cpumem'   <- cpumem
+                     ; db        <- d
+                     ; cpumem''  <- runSystem (fst cpumem') (snd cpumem')
+                     ; lcd       <- (getLcd (snd cpumem''))
+                     ; putStrLn (show $ getRegister H (fst cpumem''))
+                     ; display'  <-
                          if (lcd ^. lcdStatus . modeFlag) == HBlank then
-                           putStrLn "Scanline Rendered" >>
                            renderScanLine (snd cpumem'') db
                          else
                            return db
-                     ; return (return display, return cpumem'') }
+                     ; return (return display', return cpumem'') }
   where cpumem = (snd dbc)
         d      = (fst dbc)
 

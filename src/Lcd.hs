@@ -847,10 +847,12 @@ convertShadeToRGBA Black     = [0  , 0  , 0  , 255]
 byteToScanlineOffset :: Word8 -> Int
 byteToScanlineOffset b = (fromIntegral b) * 640
 
--- | Gicen a list of writes them to the display buffer.
+-- | Given a list of writes them to the display buffer.
 renderBufferLine :: [Shade] -> Word8 -> DisplayBuffer -> IO DisplayBuffer
-renderBufferLine s l b = (pokeArray (plusPtr (b ^. arrPtr) (byteToScanlineOffset l))
-                          $ foldl (++) [] $ map convertShadeToRGBA s) >> return b
+renderBufferLine s l b = (sequence $ map (\(x,y) -> pokeArray (plusPtr (b ^. arrPtr) ((byteToScanlineOffset l) + y)) x)
+                          (map (\(x,y) -> (x,4*y)) (zip shades [0..(length shades)]))) >> return b
+  where
+    shades = (map convertShadeToRGBA s)
 
 -- | Given some memory and a display buffer render a scanline
 renderScanLine :: Memory -> DisplayBuffer -> IO DisplayBuffer

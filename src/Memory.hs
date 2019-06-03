@@ -8,6 +8,7 @@ import Data.Binary.Get
 import Control.Lens
 import Control.Monad
 import Data.Array.IO
+import Data.Array
 import Data.Word
 import Data.Bits
 
