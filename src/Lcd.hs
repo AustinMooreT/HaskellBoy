@@ -489,333 +489,38 @@ stepLcd lcd = modeTransition . lyUpdate $ lcd
 
 {- ^ END LCD STATE TRANSITIONS -}
 
-{- | BEGIN TILE -}
-
--- | Data structure representing a row in a tile.
-data TileRow =
-  TileRow
-  {
-    _shade0 :: Shade,
-    _shade1 :: Shade,
-    _shade2 :: Shade,
-    _shade3 :: Shade,
-    _shade4 :: Shade,
-    _shade5 :: Shade,
-    _shade6 :: Shade,
-    _shade7 :: Shade
-  }
-makeLenses ''TileRow
-
--- | Data structure representing a tile.
-data Tile =
-  Tile
-  {
-    _tileRow0 :: TileRow,
-    _tileRow1 :: TileRow,
-    _tileRow2 :: TileRow,
-    _tileRow3 :: TileRow,
-    _tileRow4 :: TileRow,
-    _tileRow5 :: TileRow,
-    _tileRow6 :: TileRow,
-    _tileRow7 :: TileRow
-  }
-makeLenses ''Tile
+{- | BEGIN SCANLINE RENDERING -}
 
 -- | Fetches a tile row from an address in ram.
-getTileRow :: Word16 -> Memory -> (Palette -> IO TileRow)
-getTileRow addr mem = \pal -> do { bh <- getMemory addr mem
-                                 ; bl <- getMemory (addr + 1) mem
-                                 ; return $ TileRow
-                                   (bitsToShade (testBit bl 7) (testBit bh 7) pal)
-                                   (bitsToShade (testBit bl 6) (testBit bh 6) pal)
-                                   (bitsToShade (testBit bl 5) (testBit bh 5) pal)
-                                   (bitsToShade (testBit bl 4) (testBit bh 4) pal)
-                                   (bitsToShade (testBit bl 3) (testBit bh 3) pal)
-                                   (bitsToShade (testBit bl 2) (testBit bh 2) pal)
-                                   (bitsToShade (testBit bl 1) (testBit bh 1) pal)
-                                   (bitsToShade (testBit bl 0) (testBit bh 0) pal) }
+getTileRow :: Word16 -> Memory -> Word8 -> Word8 -> Palette -> IO [Shade]
+getTileRow  addr mem start stop = \pal -> do { bh <- getMemory addr mem
+                                            ; bl <- getMemory (addr + 1) mem
+                                            ; return $ reverse (map
+                                              (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
+                                              [(fromIntegral start') .. (fromIntegral stop')]) }
+  where start' = start `mod` 8
+        stop'  = stop `mod` 8
 
--- | Fetches a tile from an address in ram.
-getTile :: Word16 -> Memory -> (Palette -> IO Tile)
-getTile addr mem = \pal -> do { r0 <- getTileRow addr mem pal
-                              ; r1 <- getTileRow (addr + 2)  mem pal
-                              ; r2 <- getTileRow (addr + 4)  mem pal
-                              ; r3 <- getTileRow (addr + 6)  mem pal
-                              ; r4 <- getTileRow (addr + 8)  mem pal
-                              ; r5 <- getTileRow (addr + 10) mem pal
-                              ; r6 <- getTileRow (addr + 12) mem pal
-                              ; r7 <- getTileRow (addr + 14) mem pal
-                              ; return $ Tile r0 r1 r2 r3 r4 r5 r6 r7 }
+getScanlineFromX :: ScrollX -> Memory -> Palette -> [Word16 -> IO [Shade]]
+getScanlineFromX scx mem pal = map (\(x,y) -> \addr -> getTileRow addr mem x y pal) $
+                               ((scxm,7):(take 19 (repeat (0,7))) ++ [(0, (7-scxm))])
+  where scxm = scx `mod` 8
+        scxo = (scx - scxm) `div` 8
 
--- | Converts a word to a functor for indexing the tile rows of a tile.
-wordToTileRowLens :: Word8 -> Lens' Tile TileRow
-wordToTileRowLens 0 = tileRow0
-wordToTileRowLens 1 = tileRow1
-wordToTileRowLens 2 = tileRow2
-wordToTileRowLens 3 = tileRow3
-wordToTileRowLens 4 = tileRow4
-wordToTileRowLens 5 = tileRow5
-wordToTileRowLens 6 = tileRow6
-wordToTileRowLens 7 = tileRow7
-wordToTileRowLens n = wordToTileRowLens $ n `mod` 8
-
--- | Converts a word to a functor for indexing the shades of a tile row.
-wordToShadeLens :: Word8 -> Lens' TileRow Shade
-wordToShadeLens 0 = shade0
-wordToShadeLens 1 = shade1
-wordToShadeLens 2 = shade2
-wordToShadeLens 3 = shade3
-wordToShadeLens 4 = shade4
-wordToShadeLens 5 = shade5
-wordToShadeLens 6 = shade6
-wordToShadeLens 7 = shade7
-wordToShadeLens n = wordToShadeLens $ n `mod` 8
-
-{- ^ END TILE -}
-
-{- | BEGIN RENDERING BACKGROUND MAP - NOTE Let's not talk about how ugly this is. -}
-
--- | This data structure represents a row in the BackgroundMap.
-data BackgroundMapRow =
-  BackgroundMapRow
-  {
-    _tile0  :: Tile,
-    _tile1  :: Tile,
-    _tile2  :: Tile,
-    _tile3  :: Tile,
-    _tile4  :: Tile,
-    _tile5  :: Tile,
-    _tile6  :: Tile,
-    _tile7  :: Tile,
-    _tile8  :: Tile,
-    _tile9  :: Tile,
-    _tile10 :: Tile,
-    _tile11 :: Tile,
-    _tile12 :: Tile,
-    _tile13 :: Tile,
-    _tile14 :: Tile,
-    _tile15 :: Tile,
-    _tile16 :: Tile,
-    _tile17 :: Tile,
-    _tile18 :: Tile,
-    _tile19 :: Tile,
-    _tile20 :: Tile,
-    _tile21 :: Tile,
-    _tile22 :: Tile,
-    _tile23 :: Tile,
-    _tile24 :: Tile,
-    _tile25 :: Tile,
-    _tile26 :: Tile,
-    _tile27 :: Tile,
-    _tile28 :: Tile,
-    _tile29 :: Tile,
-    _tile30 :: Tile,
-    _tile31 :: Tile
-  }
-makeLenses ''BackgroundMapRow
-
--- | This data structure represents the whole gameboy's background map in memory.
-data BackgroundMap =
-  BackgroundMap
-  {
-    _bgRow0  :: BackgroundMapRow,
-    _bgRow1  :: BackgroundMapRow,
-    _bgRow2  :: BackgroundMapRow,
-    _bgRow3  :: BackgroundMapRow,
-    _bgRow4  :: BackgroundMapRow,
-    _bgRow5  :: BackgroundMapRow,
-    _bgRow6  :: BackgroundMapRow,
-    _bgRow7  :: BackgroundMapRow,
-    _bgRow8  :: BackgroundMapRow,
-    _bgRow9  :: BackgroundMapRow,
-    _bgRow10 :: BackgroundMapRow,
-    _bgRow11 :: BackgroundMapRow,
-    _bgRow12 :: BackgroundMapRow,
-    _bgRow13 :: BackgroundMapRow,
-    _bgRow14 :: BackgroundMapRow,
-    _bgRow15 :: BackgroundMapRow,
-    _bgRow16 :: BackgroundMapRow,
-    _bgRow17 :: BackgroundMapRow,
-    _bgRow18 :: BackgroundMapRow,
-    _bgRow19 :: BackgroundMapRow,
-    _bgRow20 :: BackgroundMapRow,
-    _bgRow21 :: BackgroundMapRow,
-    _bgRow22 :: BackgroundMapRow,
-    _bgRow23 :: BackgroundMapRow,
-    _bgRow24 :: BackgroundMapRow,
-    _bgRow25 :: BackgroundMapRow,
-    _bgRow26 :: BackgroundMapRow,
-    _bgRow27 :: BackgroundMapRow,
-    _bgRow28 :: BackgroundMapRow,
-    _bgRow29 :: BackgroundMapRow,
-    _bgRow30 :: BackgroundMapRow,
-    _bgRow31 :: BackgroundMapRow
-  }
-makeLenses ''BackgroundMap
-
--- | Fetches a row in the background map.
-getBackgroundMapRow :: TileMapMemoryBank -> AddressingMode -> Memory -> (Palette -> IO BackgroundMapRow)
-getBackgroundMapRow (Bank start _ _) (adrMode, _) mem = \pal -> do { t0  <- getMemory (start) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t1  <- getMemory (start + 1)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t2  <- getMemory (start + 2)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t3  <- getMemory (start + 3)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t4  <- getMemory (start + 4)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t5  <- getMemory (start + 5)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t6  <- getMemory (start + 6)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t7  <- getMemory (start + 7)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t8  <- getMemory (start + 8)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t9  <- getMemory (start + 9)  mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t10 <- getMemory (start + 10) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t11 <- getMemory (start + 11) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t12 <- getMemory (start + 12) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t13 <- getMemory (start + 13) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t14 <- getMemory (start + 14) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t15 <- getMemory (start + 15) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t16 <- getMemory (start + 16) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t17 <- getMemory (start + 17) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t18 <- getMemory (start + 18) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t19 <- getMemory (start + 19) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t20 <- getMemory (start + 20) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t21 <- getMemory (start + 21) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t22 <- getMemory (start + 22) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t23 <- getMemory (start + 23) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t24 <- getMemory (start + 24) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t25 <- getMemory (start + 25) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t26 <- getMemory (start + 26) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t27 <- getMemory (start + 27) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t28 <- getMemory (start + 28) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t29 <- getMemory (start + 29) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t30 <- getMemory (start + 30) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; t31 <- getMemory (start + 31) mem >>= \x -> getTile (adrMode x) mem pal
-                                                                   ; return $ BackgroundMapRow t0 t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12 t13 t14 t15
-                                                                     t16 t17 t18 t19 t20 t21 t22 t23 t24 t25 t26 t27 t28 t29 t30 t31 }
-
--- | Fetches the entire BackgroundMap.
-getBackgroundMap :: TileMapMemoryBank -> AddressingMode -> Memory -> (Palette -> IO BackgroundMap)
-getBackgroundMap (Bank start stop b0) (adrMode, b1) mem = \pal -> do { r0  <- getBackgroundMapRow (Bank start stop b0)             (adrMode, b1) mem pal
-                                                                     ; r1  <- getBackgroundMapRow (Bank (start + 32) stop b0)      (adrMode, b1) mem pal
-                                                                     ; r2  <- getBackgroundMapRow (Bank (start + (32*2)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r3  <- getBackgroundMapRow (Bank (start + (32*3)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r4  <- getBackgroundMapRow (Bank (start + (32*4)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r5  <- getBackgroundMapRow (Bank (start + (32*5)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r6  <- getBackgroundMapRow (Bank (start + (32*6)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r7  <- getBackgroundMapRow (Bank (start + (32*7)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r8  <- getBackgroundMapRow (Bank (start + (32*8)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r9  <- getBackgroundMapRow (Bank (start + (32*9)) stop b0)  (adrMode, b1) mem pal
-                                                                     ; r10 <- getBackgroundMapRow (Bank (start + (32*10)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r11 <- getBackgroundMapRow (Bank (start + (32*11)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r12 <- getBackgroundMapRow (Bank (start + (32*12)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r13 <- getBackgroundMapRow (Bank (start + (32*13)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r14 <- getBackgroundMapRow (Bank (start + (32*14)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r15 <- getBackgroundMapRow (Bank (start + (32*15)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r16 <- getBackgroundMapRow (Bank (start + (32*16)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r17 <- getBackgroundMapRow (Bank (start + (32*17)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r18 <- getBackgroundMapRow (Bank (start + (32*18)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r19 <- getBackgroundMapRow (Bank (start + (32*19)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r20 <- getBackgroundMapRow (Bank (start + (32*20)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r21 <- getBackgroundMapRow (Bank (start + (32*21)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r22 <- getBackgroundMapRow (Bank (start + (32*22)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r23 <- getBackgroundMapRow (Bank (start + (32*23)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r24 <- getBackgroundMapRow (Bank (start + (32*24)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r25 <- getBackgroundMapRow (Bank (start + (32*25)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r26 <- getBackgroundMapRow (Bank (start + (32*26)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r27 <- getBackgroundMapRow (Bank (start + (32*27)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r28 <- getBackgroundMapRow (Bank (start + (32*28)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r29 <- getBackgroundMapRow (Bank (start + (32*29)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r30 <- getBackgroundMapRow (Bank (start + (32*30)) stop b0) (adrMode, b1) mem pal
-                                                                     ; r31 <- getBackgroundMapRow (Bank (start + (32*31)) stop b0) (adrMode, b1) mem pal
-                                                                     ; return $ BackgroundMap r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 r13 r14 r15
-                                                                     r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31 }
-
--- TODO add documentation
-getBackgroundMapFromLcd :: Lcd -> Memory -> IO BackgroundMap
-getBackgroundMapFromLcd lcd mem = getBackgroundMap
-                                  (lcd ^. lcdControl . bgTileMapSelect)
-                                  (lcd ^. lcdControl . bgWindowTileSelect)
-                                  mem
-                                  (lcd ^. bgPalette)
-
--- | Get's the appropriate tile row from the background map based on scroll y
-indexBackgroundMapRow :: ScrollY -> BackgroundMap -> BackgroundMapRow
-indexBackgroundMapRow 0   bm = bm ^. bgRow0
-indexBackgroundMapRow 8   bm = bm ^. bgRow1
-indexBackgroundMapRow 16  bm = bm ^. bgRow2
-indexBackgroundMapRow 24  bm = bm ^. bgRow3
-indexBackgroundMapRow 32  bm = bm ^. bgRow4
-indexBackgroundMapRow 40  bm = bm ^. bgRow5
-indexBackgroundMapRow 48  bm = bm ^. bgRow6
-indexBackgroundMapRow 56  bm = bm ^. bgRow7
-indexBackgroundMapRow 64  bm = bm ^. bgRow8
-indexBackgroundMapRow 72  bm = bm ^. bgRow9
-indexBackgroundMapRow 80  bm = bm ^. bgRow10
-indexBackgroundMapRow 88  bm = bm ^. bgRow11
-indexBackgroundMapRow 96  bm = bm ^. bgRow12
-indexBackgroundMapRow 104 bm = bm ^. bgRow13
-indexBackgroundMapRow 112 bm = bm ^. bgRow14
-indexBackgroundMapRow 120 bm = bm ^. bgRow15
-indexBackgroundMapRow 128 bm = bm ^. bgRow16
-indexBackgroundMapRow 136 bm = bm ^. bgRow17
-indexBackgroundMapRow 144 bm = bm ^. bgRow18
-indexBackgroundMapRow 152 bm = bm ^. bgRow19
-indexBackgroundMapRow 160 bm = bm ^. bgRow20
-indexBackgroundMapRow 168 bm = bm ^. bgRow21
-indexBackgroundMapRow 176 bm = bm ^. bgRow22
-indexBackgroundMapRow 184 bm = bm ^. bgRow23
-indexBackgroundMapRow 192 bm = bm ^. bgRow24
-indexBackgroundMapRow 200 bm = bm ^. bgRow25
-indexBackgroundMapRow 208 bm = bm ^. bgRow26
-indexBackgroundMapRow 216 bm = bm ^. bgRow27
-indexBackgroundMapRow 224 bm = bm ^. bgRow28
-indexBackgroundMapRow 232 bm = bm ^. bgRow29
-indexBackgroundMapRow 240 bm = bm ^. bgRow30
-indexBackgroundMapRow 248 bm = bm ^. bgRow31
-indexBackgroundMapRow n   bm = indexBackgroundMapRow (n - (n `mod` 8)) bm
-
--- | Get's the appropriate tile from a background map row based on scroll x
-indexBackgroundMapTile :: ScrollX -> BackgroundMapRow -> Tile
-indexBackgroundMapTile 0   bm = bm ^. tile0
-indexBackgroundMapTile 8   bm = bm ^. tile1
-indexBackgroundMapTile 16  bm = bm ^. tile2
-indexBackgroundMapTile 24  bm = bm ^. tile3
-indexBackgroundMapTile 32  bm = bm ^. tile4
-indexBackgroundMapTile 40  bm = bm ^. tile5
-indexBackgroundMapTile 48  bm = bm ^. tile6
-indexBackgroundMapTile 56  bm = bm ^. tile7
-indexBackgroundMapTile 64  bm = bm ^. tile8
-indexBackgroundMapTile 72  bm = bm ^. tile9
-indexBackgroundMapTile 80  bm = bm ^. tile10
-indexBackgroundMapTile 88  bm = bm ^. tile11
-indexBackgroundMapTile 96  bm = bm ^. tile12
-indexBackgroundMapTile 104 bm = bm ^. tile13
-indexBackgroundMapTile 112 bm = bm ^. tile14
-indexBackgroundMapTile 120 bm = bm ^. tile15
-indexBackgroundMapTile 128 bm = bm ^. tile16
-indexBackgroundMapTile 136 bm = bm ^. tile17
-indexBackgroundMapTile 144 bm = bm ^. tile18
-indexBackgroundMapTile 152 bm = bm ^. tile19
-indexBackgroundMapTile 160 bm = bm ^. tile20
-indexBackgroundMapTile 168 bm = bm ^. tile21
-indexBackgroundMapTile 176 bm = bm ^. tile22
-indexBackgroundMapTile 184 bm = bm ^. tile23
-indexBackgroundMapTile 192 bm = bm ^. tile24
-indexBackgroundMapTile 200 bm = bm ^. tile25
-indexBackgroundMapTile 208 bm = bm ^. tile26
-indexBackgroundMapTile 216 bm = bm ^. tile27
-indexBackgroundMapTile 224 bm = bm ^. tile28
-indexBackgroundMapTile 232 bm = bm ^. tile29
-indexBackgroundMapTile 240 bm = bm ^. tile30
-indexBackgroundMapTile 248 bm = bm ^. tile31
-indexBackgroundMapTile n   bm = indexBackgroundMapTile (n - (n `mod` 8)) bm
-
--- | Given values for the scrollx and scrolly registers grabs the shade at that pixel for the background map.
-indexBackgroundMap :: ScrollX -> ScrollY -> BackgroundMap -> Shade
-indexBackgroundMap x y bm = (indexBackgroundMapTile x (indexBackgroundMapRow y bm)) ^. (wordToTileRowLens y) . (wordToShadeLens x)
 
 -- | Given values for the scrollx scrolly and ly fetches an lcd scanline from a background map.
-renderLcdBgScanline :: ScrollX -> ScrollY -> LY -> BackgroundMap -> [Shade]
-renderLcdBgScanline x y yoff bm = map (\z -> indexBackgroundMap (x + z) (y + yoff) bm) [0..159]
+renderLcdBgScanline :: ScrollX -> ScrollY -> LY -> TileMapMemoryBank -> AddressingMode -> Memory -> Palette -> IO [Shade]
+renderLcdBgScanline x y yoff (Bank start _ _) (adrMode, _) mem pal = (sequence $
+                                                                     map (\(l,m) -> l >>= \l' -> m $ l') $
+                                                                     zip
+                                                                     (map (\l -> getMemory (baseAddr + l) mem >>= \q -> return $ adrMode q) [0 .. 19])
+                                                                     tileLines) >>= \o -> return $ foldl (++) [] o
+  where x'        = toWord16 ((x - (x `mod` 8)) `div` 8)
+        y'        = toWord16 (((y + yoff) - ((y + yoff) `mod` 8)) `div` 8)
+        baseAddr  = ((start + 32*y') + x')
+        tileLines = getScanlineFromX x mem pal
 
-{- ^ END RENDERING BACKGROUND MAP -}
+{- ^ END SCANLINE RENDERING -}
 
 
 {- | BEGIN DISPLAY BUFFER -}
@@ -858,11 +563,12 @@ renderBufferLine s l b = (sequence $ map (\(x,y) -> pokeArray (plusPtr (b ^. arr
 renderScanLine :: Memory -> DisplayBuffer -> IO DisplayBuffer
 renderScanLine mem db = do { lcd <- getLcd mem
                            ; pal <- getBackgroundPalette mem
-                           ; bgm <- getBackgroundMap (lcd ^. lcdControl . bgTileMapSelect) (lcd ^. lcdControl . bgWindowTileSelect) mem pal
-                           ; renderBufferLine
-                             (renderLcdBgScanline (lcd ^. scrollx) (lcd ^. scrolly) (lcd ^. ly) bgm)
-                             (lcd ^. ly)
-                             db }
+                           ; rl  <- renderLcdBgScanline
+                                    (lcd ^. scrollx)
+                                    (lcd ^. scrolly)
+                                    (lcd ^. ly)
+                                    (lcd ^. lcdControl . bgTileMapSelect) (lcd ^. lcdControl . bgWindowTileSelect) mem pal
+                           ; renderBufferLine rl (lcd ^. ly) db }
 
 foo mem db = do { _    <- sequence $ (map (\_ -> renderScanLine mem db) [0..143])
                 ; displayGlossBuffer db True }

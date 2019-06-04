@@ -14,7 +14,8 @@ import Control.Lens
 --displayGlossBuffer :: DisplayBuffer -> Bool -> IO ()
 
 main :: IO ()
-main = profiling $ return (mainBuffer, (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))))
+main = runGlossBuffer mainBuffer (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))) True
+  --profiling $ return (mainBuffer, (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))))
 
 profiling :: IO (IO DisplayBuffer, IO (Cpu, Memory)) -> IO ()
 profiling d = do {d' <- d
@@ -53,7 +54,7 @@ runToHBlank dbc = do { cpumem'   <- cpumem
                      ; db        <- d
                      ; cpumem''  <- runSystem (fst cpumem') (snd cpumem')
                      ; lcd       <- (getLcd (snd cpumem''))
-                     ; putStrLn (show $ getRegister H (fst cpumem''))
+
                      ; display'  <-
                          if (lcd ^. lcdStatus . modeFlag) == HBlank then
                            renderScanLine (snd cpumem'') db

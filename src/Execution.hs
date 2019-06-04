@@ -81,10 +81,6 @@ executeTillHBlank cpu mem = do { lcd     <- getLcd mem
                                ; lcd'    <- getLcd mem
                                ; mem'    <- setLcd (stepLcd lcd') (snd cpumem')
                                ; lcd''   <- getLcd mem'
-                               ; if (lcd'' ^. lcdStatus . modeFlag) == VBlank then
-                                   putStrLn (show $ (getRegister H (fst cpumem')))
-                                 else
-                                   return ()
                                ; if (lcd'' ^. lcdStatus . modeFlag) /= HBlank then
                                    executeTillHBlank (fst cpumem') (snd cpumem')
                                  else
