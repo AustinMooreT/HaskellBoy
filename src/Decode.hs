@@ -262,7 +262,7 @@ decodeOp 0xBF = Instruction 0xBF "CP A" const4 $ f $ fixCpu $ cpReg A
 --TODO 0xC0
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" const12 $ g $ pop (B, C)
 --TODO 0xC2 - 0xC4
-decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" const16 $ g $ (\mem -> (\cpu -> push (getRegisters (B, C) cpu) mem cpu))
+decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" const16 $ j $ (\mem -> (\cpu -> push (getRegisters (B, C) cpu) mem cpu))
 --TODO 0xC6 - 0xC8
 decodeOp 0xC9 = Instruction 0xC9 "RET" const16 $ g $ (\mem -> (\cpu -> ret cpu mem))
 --TODO 0xCA
@@ -270,9 +270,9 @@ decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" const8 $ g $
                 (\mem -> (\cpu -> do { cb <- fetchCb (incrementRegistersWithoutFlags (PHI, CLO) cpu) mem
                                      ; return $ decodeCb cb (incrementRegistersWithoutFlags (PHI,CLO) cpu)}))
 --TODO 0xCC
-decodeOp 0xCD = Instruction 0xCD "CALL a8" const24 $ g $ (\mem -> (\cpu -> call cpu mem))
+decodeOp 0xCD = Instruction 0xCD "CALL a8" const24 $ j $ (\mem -> (\cpu -> call cpu mem))
 --TODO 0xCE - 0xDF
-decodeOp 0xE0 = Instruction 0xE0 "LDH (a8), A" const12 $ h $ (\mem -> (\cpu -> ldFFAndMemOffsetWithA cpu mem))
+decodeOp 0xE0 = Instruction 0xE0 "LDH (a8), A" const12 $ j $ (\mem -> (\cpu -> ldFFAndMemOffsetWithA cpu mem))
 --TODO 0xE1
 decodeOp 0xE2 = Instruction 0xE2 "LD (C), A" const8 $ h $ ldFFRegAddrReg C A
 --TODO 0xE3 - E9

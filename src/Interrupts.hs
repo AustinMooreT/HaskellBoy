@@ -110,7 +110,7 @@ interruptToAddress VBlank  = 0x0040
 
 dispatchInterrupt :: Interrupt -> Cpu -> Memory -> IO (Cpu, Memory)
 dispatchInterrupt int cpu mem = do { cpu' <- (push (getRegisters (PHI, CLO) cpu) mem cpu)
-                                   ; return $ (setRegisters (PHI, CLO) (interruptToAddress int) cpu', mem) }
+                                   ; return $ (setRegisters (PHI, CLO) (interruptToAddress int) (fst cpu'), (snd cpu')) }
 
 checkAndEvalInterrupts :: Cpu -> Memory -> IO (Cpu, Memory)
 checkAndEvalInterrupts cpu mem = getIMEFlag mem >>=

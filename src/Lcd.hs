@@ -8,6 +8,8 @@ module Lcd (module Lcd) where
 import Lib
 import Memory
 
+import Numeric -- TODO remove this.
+
 import Graphics.Gloss
 import Control.Lens
 import Data.Word
@@ -494,10 +496,17 @@ stepLcd lcd = modeTransition . lyUpdate $ lcd
 -- | Fetches a tile row from an address in ram.
 getTileRow :: Word16 -> Memory -> Word8 -> Word8 -> Palette -> IO [Shade]
 getTileRow  addr mem start stop = \pal -> do { bh <- getMemory addr mem
-                                            ; bl <- getMemory (addr + 1) mem
-                                            ; return $ reverse (map
-                                              (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
-                                              [(fromIntegral start') .. (fromIntegral stop')]) }
+                                             ; bl <- getMemory (addr + 1) mem
+                                             ; if addr /= 0x8000 then
+                                                 (putStrLn $ showHex addr "") >>
+                                                 (putStrLn . show $ reverse (map
+                                                                             (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
+                                                                             [(fromIntegral start') .. (fromIntegral stop')]))
+                                               else
+                                                 return ()
+                                             ; return $ reverse (map
+                                                                 (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
+                                                                 [(fromIntegral start') .. (fromIntegral stop')]) }
   where start' = start `mod` 8
         stop'  = stop `mod` 8
 
@@ -509,12 +518,13 @@ getScanlineFromX scx mem pal = map (\(x,y) -> \addr -> getTileRow addr mem x y p
 
 
 -- | Given values for the scrollx scrolly and ly fetches an lcd scanline from a background map.
+  -- NOTE/TODO foldl (++) is O(n^2) fix this.
 renderLcdBgScanline :: ScrollX -> ScrollY -> LY -> TileMapMemoryBank -> AddressingMode -> Memory -> Palette -> IO [Shade]
-renderLcdBgScanline x y yoff (Bank start _ _) (adrMode, _) mem pal = (sequence $
+renderLcdBgScanline x y yoff (Bank start _ _) (adrMode, bo) mem pal =((sequence $
                                                                      map (\(l,m) -> l >>= \l' -> m $ l') $
                                                                      zip
                                                                      (map (\l -> getMemory (baseAddr + l) mem >>= \q -> return $ adrMode q) [0 .. 19])
-                                                                     tileLines) >>= \o -> return $ foldl (++) [] o
+                                                                     tileLines) >>= \o -> return $ foldl (++) [] o)
   where x'        = toWord16 ((x - (x `mod` 8)) `div` 8)
         y'        = toWord16 (((y + yoff) - ((y + yoff) `mod` 8)) `div` 8)
         baseAddr  = ((start + 32*y') + x')
@@ -567,7 +577,8 @@ renderScanLine mem db = do { lcd <- getLcd mem
                                     (lcd ^. scrollx)
                                     (lcd ^. scrolly)
                                     (lcd ^. ly)
-                                    (lcd ^. lcdControl . bgTileMapSelect) (lcd ^. lcdControl . bgWindowTileSelect) mem pal
+                                    (lcd ^. lcdControl . bgTileMapSelect)
+                                    (lcd ^. lcdControl . bgWindowTileSelect) mem pal
                            ; renderBufferLine rl (lcd ^. ly) db }
 
 foo mem db = do { _    <- sequence $ (map (\_ -> renderScanLine mem db) [0..143])

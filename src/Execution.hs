@@ -32,13 +32,12 @@ applyOp (OpCpuMemOpCpuMem f) cpu mem = f mem cpu
 executeInstr :: Instruction -> Cpu -> Memory -> IO (Cpu, Memory)
 executeInstr instr cpu mem = do { cpumem  <- applyOp (instr ^. operation) cpu mem
                                 ; cpumem' <- return (incrementRegistersWithoutFlags (PHI, CLO) (fst cpumem), (snd cpumem))
-                                --; lcd     <- getLcd (snd cpumem')
-                                --; _ <- putStrLn ("Instr: " ++ (instr ^. name)) >>
-                                             --putStrLn ("H: " ++ (show $ getRegister H (fst cpumem')))
-                                -- ; _       <- putStrLn $ "LY: " ++ (show $ lcd ^. ly)
+                                ; lcd     <- getLcd (snd cpumem')
+                                --; _       <- putStrLn . show . snd $ lcd ^. lcdControl . bgWindowTileSelect
+                                --; _       <- putStrLn $ "LY: " ++ (show $ lcd ^. ly)
                                 -- ; _       <- putStrLn $ "A: " ++ (show $ getRegister A (fst cpumem'))
-                                --; nb      <- getMemory (getRegisters (PHI, CLO) (fst cpumem')) (snd cpumem')
-                                --; _       <- putStrLn (showHex nb "")
+                                --; nb      <- return $ getRegisters (PHI, CLO) (fst cpumem')
+                                --; _       <- putStrLn $ "nb:" ++ (showHex nb "")
                                 ; INT.checkAndEvalInterrupts (fst cpumem') (snd cpumem') }
 
 -- | Fetches the next instruction from memory.
@@ -79,7 +78,10 @@ executeTillHBlank :: Cpu -> Memory -> IO (Cpu, Memory)
 executeTillHBlank cpu mem = do { lcd     <- getLcd mem
                                ; cpumem' <- executeTillCycle (lcdModeToTiming $ lcd ^. lcdStatus . modeFlag) cpu mem
                                ; lcd'    <- getLcd mem
-                               ; mem'    <- setLcd (stepLcd lcd') (snd cpumem')
+                               ; mem'    <- if lcd' ^. lcdControl . lcdEnabled then
+                                              setLcd (stepLcd lcd') (snd cpumem')
+                                            else
+                                              return mem
                                ; lcd''   <- getLcd mem'
                                ; if (lcd'' ^. lcdStatus . modeFlag) /= HBlank then
                                    executeTillHBlank (fst cpumem') (snd cpumem')

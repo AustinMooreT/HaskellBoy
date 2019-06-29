@@ -1,5 +1,6 @@
 {-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Cpu (module Cpu) where
 
@@ -313,7 +314,7 @@ registerToFunc PHI  = _registerP_hi
 registerToFunc CLO  = _registerC_lo
 
 -- | Converts a register datum to a Lens (functor).
-registerToLens :: Functor f => Register -> (Word8 -> f Word8) -> Cpu -> f Cpu
+registerToLens :: Register -> Lens' Cpu Word8
 registerToLens A    = registerA
 registerToLens B    = registerB
 registerToLens C    = registerC
@@ -574,10 +575,10 @@ testBitReg r i = \cpu -> zero . sub . half $ cpu
 {- BEGIN GLOBAL CPU OPERATIONS -}
 
 -- | TODO document this.
-ldFFAndMemOffsetWithA :: Cpu -> Memory -> IO Memory
-ldFFAndMemOffsetWithA cpu mem = join (\addr ->
-                                    return $ setMemory (0xFF00 + (toWord16 addr)) (getRegister A cpu1) mem) =<<
-                                getMemory (getRegisters (PHI,CLO) cpu1) mem
+ldFFAndMemOffsetWithA :: Cpu -> Memory -> IO (Cpu, Memory)
+ldFFAndMemOffsetWithA cpu mem = (join (\addr ->
+                                        return $ setMemory (0xFF00 + (toWord16 addr)) (getRegister A cpu1) mem) =<<
+                                getMemory (getRegisters (PHI,CLO) cpu1) mem) >>= \x -> return (cpu1, x)
   where
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
 
@@ -590,13 +591,12 @@ ldAWithFFAndMemOffset cpu mem = do { offset <- getMemory (getRegisters (PHI,CLO)
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
 
 -- | TODO documentation and make it IO (Cpu, Memory)
-push :: Word16 -> Memory -> Cpu -> IO Cpu
-push d mem cpu = join (\cpu_ -> return $ pushByte dhi cpu_) =<< (pushByte dlo cpu)
+push :: Word16 -> Memory -> Cpu -> IO (Cpu, Memory)
+push d mem cpu = join (\cpu_ -> return $ pushByte dhi cpu_) =<< (pushByte dlo (cpu, mem))
   where
     dhi = toWord8 $ shiftR d 8
     dlo = toWord8 $ 0x00FF .&. d
-    pushByte = \b  -> decrementRegistersWithoutFlags (SHI, PLO) .:
-               (\cpu -> (setMemory (getRegisters (SHI, PLO) cpu) b mem) >>= \x -> return cpu)
+    pushByte = \b  -> (\(cpu', mem') -> (setMemory (getRegisters (SHI, PLO) cpu') b mem') >>= \x -> return (decrementRegistersWithoutFlags (SHI, PLO) cpu', x))
 
 -- | TODO document this.
 pop :: (Register, Register) -> Memory -> Cpu -> IO Cpu
@@ -608,13 +608,13 @@ pop rs mem cpu = do { mem1 <- getMemory (getRegisters (SHI, PLO) cpu1) mem
         cpu2 = incrementRegistersWithoutFlags (SHI, PLO) cpu1
 
 --TODO Combine emu data makes me very uncomfortable here. I'm doing something wrong.
-call :: Cpu -> Memory -> IO Cpu
+call :: Cpu -> Memory -> IO (Cpu, Memory)
 call cpu mem = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
-                 ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
-                 ; let combinedMem = combineData mem2 mem1
+                  ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
+                  ; let combinedMem = combineData mem2 mem1
                    in do { pushedCpu <- push (getRegisters (PHI, CLO) cpu3) mem cpu
-                         ; let setCpu = setRegisters (PHI, CLO) combinedMem pushedCpu
-                           in return $ decrementRegistersWithoutFlags (PHI, CLO) setCpu }}
+                         ; let setCpu = setRegisters (PHI, CLO) combinedMem (fst pushedCpu)
+                           in return $ (decrementRegistersWithoutFlags (PHI, CLO) setCpu, snd pushedCpu) }}
   where
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
     cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
