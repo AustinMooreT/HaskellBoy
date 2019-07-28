@@ -35,15 +35,15 @@ executeInstr instr cpu mem = do { cpumem  <- applyOp (instr ^. operation) cpu me
                                 ; lcd     <- getLcd (snd cpumem')
                                 --; _       <- putStrLn . show . snd $ lcd ^. lcdControl . bgWindowTileSelect
                                 --; _       <- putStrLn $ "LY: " ++ (show $ lcd ^. ly)
-                                -- ; _       <- putStrLn $ "A: " ++ (show $ getRegister A (fst cpumem'))
+                                --; _       <- putStrLn $ "A: " ++ (show $ getRegister A (fst cpumem'))
                                 --; nb      <- return $ getRegisters (PHI, CLO) (fst cpumem')
                                 --; _       <- putStrLn $ "nb:" ++ (showHex nb "")
-                                ; INT.checkAndEvalInterrupts (fst cpumem') (snd cpumem') }
+                                ;  INT.checkAndEvalInterrupts (fst cpumem') (snd cpumem') }
 
 -- | Fetches the next instruction from memory.
 fetchInstr :: Cpu -> Memory -> IO Instruction
 fetchInstr cpu mem = do { byte <- getMemory (getRegisters (PHI, CLO) cpu) mem
-                        ; return $ decodeOp byte }
+                        ; (return $ decodeOp byte) }
 
 -- | Executes to a given cycle.
 executeTillCycle :: Cycles -> Cpu -> Memory -> IO (Cpu, Memory)

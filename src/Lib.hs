@@ -5,7 +5,6 @@
 
 module Lib (module Lib) where
 
-
 import Data.Word
 --import Control.Lens
 --import Data.Array.IO as IOA
@@ -52,8 +51,8 @@ maybeSetBit8 b n w = if b then setBit w n else clearBit w n
 -- | Converts a 8 bit word to a signed integer type.
 wordToSignedInt :: Word8 -> Int
 wordToSignedInt w
-  | testBit w 7 == True = - (fromIntegral $ (complement w) + 1)
-  | otherwise = fromIntegral w
+  | testBit w 7 = - (fromIntegral $ (complement w) + 1)
+  | otherwise   = fromIntegral w
 
 -- | performs signed arithmetic if bool is true
   -- otherwise it's unsigned.

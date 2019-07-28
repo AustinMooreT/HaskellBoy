@@ -1,8 +1,10 @@
--- This file has been generated from package.yaml by hpack version 0.27.0.
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: baebe78011588c69b886035efa45263176c506c0d7b2ea33007200a2fc83d06e
+-- hash: d9603095468e28d6ccaac1e8d67f037bf67c55fba337ae16669b82a6f8cfcda4
 
 name:           HaskellBoy
 version:        0.1.0.0
@@ -15,11 +17,9 @@ copyright:      2018 Author name here
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
-cabal-version:  >= 1.10
-
 extra-source-files:
-    ChangeLog.md
     README.md
+    ChangeLog.md
 
 source-repository head
   type: git
@@ -27,30 +27,29 @@ source-repository head
 
 library
   exposed-modules:
-                  Lib
-                , Cpu
-                , Debug
-                , Decode
-                , Memory
-                , Execution
-                , Lcd
-                , BootRom
-                , Interrupts
+      BootRom
+      Cpu
+      Debug
+      Decode
+      Execution
+      Interrupts
+      Lcd
+      Lib
+      Memory
   other-modules:
       Paths_HaskellBoy
   hs-source-dirs:
       src
   build-depends:
-                base >=4.7 && <5
-              , bytestring >= 0.10.8.1
-              , binary >= 0.8.3.0
-              , lens >= 4.16
-              , vector >= 0.1.0
-              , array >= 0.1.0
-              , bytestring >= 0.10.8.1
-              , binary >= 0.8.3.0
-              , gloss >= 1.11
-              , ansi-terminal >= 0.0.0.1
+      ansi-terminal >=0.0.0.1
+    , array >=0.1.0
+    , base >=4.7 && <5
+    , binary >=0.8.3.0
+    , bytestring >=0.10.8.1
+    , gloss >=1.11
+    , lens >=4.16
+    , stm ==2.4.5.1
+    , vector >=0.1.0
   default-language: Haskell2010
 
 executable HaskellBoy-exe
@@ -59,19 +58,18 @@ executable HaskellBoy-exe
       Paths_HaskellBoy
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-                HaskellBoy
-              , base >=4.7 && <5
-              , bytestring >= 0.10.8.1
-              , binary >= 0.8.3.0
-              , lens >= 4.16
-              , vector >= 0.1.0
-              , array >= 0.1.0
-              , bytestring >= 0.10.8.1
-              , binary >= 0.8.3.0
-              , gloss >= 1.0.0.0
-              , ansi-terminal >= 0.0.0.1
+      HaskellBoy
+    , ansi-terminal >=0.0.0.1
+    , array >=0.1.0
+    , base >=4.7 && <5
+    , binary >=0.8.3.0
+    , bytestring >=0.10.8.1
+    , gloss >=1.11
+    , lens >=4.16
+    , stm ==2.4.5.1
+    , vector >=0.1.0
   default-language: Haskell2010
 
 test-suite HaskellBoy-test
@@ -81,17 +79,16 @@ test-suite HaskellBoy-test
       Paths_HaskellBoy
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-                HaskellBoy
-              , base >=4.7 && <5
-              , bytestring >= 0.10.8.1
-              , binary >= 0.8.3.0
-              , lens >= 4.16
-              , vector >= 0.1.0
-              , array >= 0.1.0
-              , bytestring >= 0.10.8.1
-              , binary >= 0.8.3.0
-              , gloss >= 1.0.0.0
-              , ansi-terminal >= 0.0.0.1
+      HaskellBoy
+    , ansi-terminal >=0.0.0.1
+    , array >=0.1.0
+    , base >=4.7 && <5
+    , binary >=0.8.3.0
+    , bytestring >=0.10.8.1
+    , gloss >=1.11
+    , lens >=4.16
+    , stm ==2.4.5.1
+    , vector >=0.1.0
   default-language: Haskell2010

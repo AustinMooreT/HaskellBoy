@@ -7,6 +7,7 @@ import Decode
 import Execution
 import Lcd
 import BootRom
+import Memory
 
 import Control.Lens
 import System.Console.ANSI as A
@@ -68,3 +69,20 @@ prettyPrintCpu cpu_ = evalPrintRegisters [(prettyPrintReg A cpu_),
                                           (prettyPrintRegReg (H,L) cpu_),
                                           (prettyPrintRegReg (SHI,PLO) cpu_),
                                           (prettyPrintRegReg (PHI,CLO) cpu_)]
+
+
+
+-- ^ Idk what I was doing up there.
+-- | New debugging code starts here.
+
+-- | Prints the contents of address to memory
+printMemory :: Memory -> Word16 -> IO ()
+printMemory mem addr = getMemory addr mem >>= \x -> putStrLn $ showHex x ""
+
+-- | Print reg prints contents of a register
+printReg :: Cpu -> Register -> IO ()
+printReg cpu reg = putStrLn $ showHex (getRegister reg cpu) ""
+
+-- | Execute till pc hits a certain value
+
+

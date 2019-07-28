@@ -14,8 +14,8 @@ import Control.Lens
 --displayGlossBuffer :: DisplayBuffer -> Bool -> IO ()
 
 main :: IO ()
-main = --runGlossBuffer mainBuffer (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))) True
-  profiling $ return (mainBuffer, (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))))
+main = runGlossBuffer mainBuffer (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))) True
+  --profiling $ return (mainBuffer, (defaultMemory >>= \x -> (loadBootRom x >>= \y -> return (defaultCpu, y))))
 
 profiling :: IO (IO DisplayBuffer, IO (Cpu, Memory)) -> IO ()
 profiling d = do {d' <- d

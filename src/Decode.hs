@@ -94,8 +94,8 @@ decodeOp 0x1F = Instruction 0x1F "RRA" const4 $ f $ (\cpu -> return $ rotateRigh
 decodeOp 0x20 = Instruction 0x20 "JR NZ, r8" (\gb -> condTime (not $ getFlag gb zeroFlag) 12 8) $ g $
                 (\mem -> (\cpu -> jumpIfRelative (not $ getFlag cpu zeroFlag) cpu mem))
 decodeOp 0x21 = Instruction 0x21 "LD HL, d16" const12 $ g $ ldRegRegWithData (H, L)
-decodeOp 0x22 = Instruction 0x22 "LD (HL+), A" const8 $ g $ (\mem -> (\cpu -> do { ldedGB <- ldMemRegRegWithReg (H, L) A mem cpu -- NOTE this is fishy.
-                                                                                 ; return $ incrementRegistersWithoutFlags (H, L) cpu }))
+decodeOp 0x22 = Instruction 0x22 "LD (HL+), A" const8 $ j $ (\mem -> (\cpu -> do { ldedGB <- ldMemRegRegWithReg (H, L) A mem cpu -- NOTE this is fishy.
+                                                                                 ; return (incrementRegistersWithoutFlags (H, L) cpu, ldedGB)}))
 decodeOp 0x23 = Instruction 0x23 "INC HL" const8 $ f $ (\cpu -> return $ incrementRegistersWithoutFlags (H, L) cpu)
 decodeOp 0x24 = Instruction 0x24 "INC H" const4 $ f $ (\cpu -> return $ incrementRegisterWithFlags H cpu)
 decodeOp 0x25 = Instruction 0x25 "DEC H" const4 $ f $ (\cpu -> return $ decrementRegisterWithFlags H cpu)

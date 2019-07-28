@@ -62,6 +62,7 @@ type WindowX = Word8
 getWindowX :: Memory -> IO WindowX
 getWindowX = getMemory 0xFF4B
 
+
 -- | set window x register.
 setWindowX :: WindowX -> (Memory -> IO Memory)
 setWindowX = setMemory 0xFF4B
@@ -497,13 +498,6 @@ stepLcd lcd = modeTransition . lyUpdate $ lcd
 getTileRow :: Word16 -> Memory -> Word8 -> Word8 -> Palette -> IO [Shade]
 getTileRow  addr mem start stop = \pal -> do { bh <- getMemory addr mem
                                              ; bl <- getMemory (addr + 1) mem
-                                             ; if addr /= 0x8000 then
-                                                 (putStrLn $ showHex addr "") >>
-                                                 (putStrLn . show $ reverse (map
-                                                                             (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
-                                                                             [(fromIntegral start') .. (fromIntegral stop')]))
-                                               else
-                                                 return ()
                                              ; return $ reverse (map
                                                                  (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
                                                                  [(fromIntegral start') .. (fromIntegral stop')]) }
@@ -511,8 +505,7 @@ getTileRow  addr mem start stop = \pal -> do { bh <- getMemory addr mem
         stop'  = stop `mod` 8
 
 getScanlineFromX :: ScrollX -> Memory -> Palette -> [Word16 -> IO [Shade]]
-getScanlineFromX scx mem pal = map (\(x,y) -> \addr -> getTileRow addr mem x y pal) $
-                               ((scxm,7):(take 19 (repeat (0,7))) ++ [(0, (7-scxm))])
+getScanlineFromX scx mem pal = map (\(x,y) addr -> getTileRow addr mem x y pal) ((scxm,7):replicate 19 (0,7) ++ [(0, 7-scxm)])
   where scxm = scx `mod` 8
         scxo = (scx - scxm) `div` 8
 
@@ -520,11 +513,10 @@ getScanlineFromX scx mem pal = map (\(x,y) -> \addr -> getTileRow addr mem x y p
 -- | Given values for the scrollx scrolly and ly fetches an lcd scanline from a background map.
   -- NOTE/TODO foldl (++) is O(n^2) fix this.
 renderLcdBgScanline :: ScrollX -> ScrollY -> LY -> TileMapMemoryBank -> AddressingMode -> Memory -> Palette -> IO [Shade]
-renderLcdBgScanline x y yoff (Bank start _ _) (adrMode, bo) mem pal =((sequence $
-                                                                     map (\(l,m) -> l >>= \l' -> m $ l') $
-                                                                     zip
-                                                                     (map (\l -> getMemory (baseAddr + l) mem >>= \q -> return $ adrMode q) [0 .. 19])
-                                                                     tileLines) >>= \o -> return $ foldl (++) [] o)
+renderLcdBgScanline x y yoff (Bank start _ _) (adrMode, bo) mem pal = mapM (\(l,m) -> l >>= \l' -> m $ l')
+                                                                      (zip
+                                                                       (map (\l -> getMemory (baseAddr + l) mem >>= \q -> return $ adrMode q) [0 .. 19])
+                                                                       tileLines) >>= \o -> return $ concat o
   where x'        = toWord16 ((x - (x `mod` 8)) `div` 8)
         y'        = toWord16 (((y + yoff) - ((y + yoff) `mod` 8)) `div` 8)
         baseAddr  = ((start + 32*y') + x')
@@ -581,6 +573,8 @@ renderScanLine mem db = do { lcd <- getLcd mem
                                     (lcd ^. lcdControl . bgWindowTileSelect) mem pal
                            ; renderBufferLine rl (lcd ^. ly) db }
 
+-- Why in the world did I name a function foo.
+-- God help me.
 foo mem db = do { _    <- sequence $ (map (\_ -> renderScanLine mem db) [0..143])
                 ; displayGlossBuffer db True }
 
