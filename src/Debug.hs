@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Debug (module Debug) where
 
@@ -8,6 +9,7 @@ import Execution
 import Lcd
 import BootRom
 import Memory
+import Lib
 
 import Control.Lens
 import System.Console.ANSI as A
@@ -49,7 +51,8 @@ prettyPrintRegReg :: (Register, Register) -> Cpu -> PrintRegister
 prettyPrintRegReg rs cpu_ = PrintRegister (regRegToDoc rs) (valStr ++ (replicate (5 - (length valStr)) ' ')) A.White
   where valStr = showHex (cpu_ ^. (composeRegisterLenses rs)) ""
 
-evalPrintRegisters :: [PrintRegister] -> IO ()
+evalPrintRegisters
+  :: [PrintRegister] -> IO ()
 evalPrintRegisters xs = putStrLn (fst str) >> putStrLn (snd str)
   where
     str = foldl (\(n1, v1) -> \(n2, v2) ->
@@ -83,6 +86,43 @@ printMemory mem addr = getMemory addr mem >>= \x -> putStrLn $ showHex x ""
 printReg :: Cpu -> Register -> IO ()
 printReg cpu reg = putStrLn $ showHex (getRegister reg cpu) ""
 
--- | Execute till pc hits a certain value
+data DebugState =
+  DebugState
+  {
+    _break      :: Word16,
+    _enableInts :: Bool
+  }
+makeLenses ''DebugState
 
+data DebugCommand =
+  PrintMem Word16           |
+  PrintReg (Cpu -> Word16)  |
+  SetBreak Word16           |
+  StepForward               |
+  Continue                  |
+  Error
 
+strToReg :: String -> (Cpu -> Word16)
+strToReg "A"   = \cpu -> toWord16 $ getRegister A cpu
+strToReg "B"   = \cpu -> toWord16 $ getRegister B cpu
+strToReg "C"   = \cpu -> toWord16 $ getRegister C cpu
+strToReg "D"   = \cpu -> toWord16 $ getRegister D cpu
+strToReg "E"   = \cpu -> toWord16 $ getRegister E cpu
+strToReg "F"   = \cpu -> toWord16 $ getRegister F cpu
+strToReg "H"   = \cpu -> toWord16 $ getRegister H cpu
+strToReg "L"   = \cpu -> toWord16 $ getRegister L cpu
+strToReg "S"   = \cpu -> toWord16 $ getRegister SHI cpu
+strToReg "PLO" = \cpu -> toWord16 $ getRegister PLO cpu
+strToReg "PHI" = \cpu -> toWord16 $ getRegister PHI cpu
+strToReg "CLO" = \cpu -> toWord16 $ getRegister CLO cpu
+strToReg "HL"  = \cpu -> getRegisters (H, L) cpu
+strToReg "SP"  = \cpu -> getRegisters (SHI, PLO) cpu
+strToReg "PC"  = \cpu -> getRegisters (PHI, CLO) cpu
+strToReg _     = \cpu -> getRegisters (PHI, CLO) cpu
+
+decodeDebugCommand :: [String] -> DebugCommand
+decodeDebugCommand str
+  | head str == "prmem" = PrintMem $ read (head . drop 1 $ str)
+  | head str == "prreg" = PrintReg $ strToReg (head . drop 1 $ str)
+
+--fetchCommand :: IO DebugCommand
