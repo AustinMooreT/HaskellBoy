@@ -119,7 +119,7 @@ checkAndEvalInterrupts cpu mem = getIMEFlag mem >>=
                                      do { mem'  <- enableInterrupts mem
                                         ; ints  <- getDispatchableInterrupts mem'
                                         ; mem'' <- setIMEFlag False mem'
-                                        ; _     <- putStrLn "Check And Eval Ints"
+                                        --; _     <- putStrLn "Check And Eval Ints"
                                         ; let int = getHighestPriorityInterrupt ints
                                           in if isNothing int then
                                                return (cpu, mem'')

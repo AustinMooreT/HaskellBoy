@@ -10,7 +10,7 @@ import BootRom
 import qualified Interrupts as INT
 
 import Data.Word
-import Numeric
+import Numeric (showHex)
 import Control.Lens
 
 {- NOTE/TODO alot of the stuff in this file might not stick around in here.
@@ -43,13 +43,37 @@ executeInstr instr cpu mem = do { cpumem  <- applyOp (instr ^. operation) cpu me
 -- | Fetches the next instruction from memory.
 fetchInstr :: Cpu -> Memory -> IO Instruction
 fetchInstr cpu mem = do { byte <- getMemory (getRegisters (PHI, CLO) cpu) mem
-                        ; (return $ decodeOp byte) }
+                         --; if (getRegisters (PHI, CLO) cpu) > 0x0100 then
+                             --putStrLn (showHex byte "")
+                           --else
+                                  --return ()
+                         ; (return $ decodeOp byte) }
 
 -- | Executes to a given cycle.
 executeTillCycle :: Cycles -> Cpu -> Memory -> IO (Cpu, Memory)
 executeTillCycle cycles cpu mem
   | cycles cpu <= 0 = return (cpu, mem)
   | otherwise       = do { instr   <- fetchInstr cpu mem
+                         --; if (and [(instr ^. name) /= "HALT", True]) then
+                           -- do { putStrLn ((instr ^. name) ++ " : " ++ (showHex (getRegisters (PHI, CLO) cpu) ""))
+                             --  ; putStrLn $ show $ cycles cpu
+                               --; putStrLn ("A : " ++ (showHex (getRegister A cpu) ""))
+                               --; putStrLn ("B : " ++ (showHex (getRegister B cpu) ""))
+                               --; putStrLn ("C : " ++ (showHex (getRegister C cpu) ""))
+                               --; putStrLn ("D : " ++ (showHex (getRegister D cpu) ""))
+                               --; putStrLn ("E : " ++ (showHex (getRegister E cpu) ""))
+                               --; putStrLn ("F : " ++ (showHex (getRegister F cpu) ""))
+                               --; putStrLn ("H : " ++ (showHex (getRegister H cpu) ""))
+                               --; putStrLn ("L : " ++ (showHex (getRegister L cpu) ""))
+                               --; putStrLn ("SHI : " ++ (showHex (getRegister SHI cpu) ""))
+                               --; putStrLn ("PLO : " ++ (showHex (getRegister PLO cpu) ""))
+                               --; putStrLn ("PHI : " ++ (showHex (getRegister PHI cpu) ""))
+                               --; putStrLn ("CLO : " ++ (showHex (getRegister CLO cpu) ""))
+                               --; lcd <- getLcd mem
+                               --; putStrLn ("LY: " ++ (showHex (lcd ^. ly) ""))
+                               --; return "" }
+                           --else
+                               --return ""
                          ; results <- executeInstr instr cpu mem
                          ; executeTillCycle
                            (const $ (cycles cpu) - (instr ^. time $ cpu))
@@ -59,6 +83,7 @@ executeTillCycle cycles cpu mem
 executeCurrInstr :: IO (Cpu, Memory) -> IO (Cpu, Memory)
 executeCurrInstr cpumem = do { cpumem' <- cpumem
                              ; instr   <- fetchInstr (fst cpumem') (snd cpumem')
+                             --; _ <- putStrLn $ instr ^. name
                              ; executeInstr instr (fst cpumem') (snd cpumem') }
 
 
@@ -77,18 +102,34 @@ executeLcdMode mode cpu mem = executeTillCycle (lcdModeToTiming mode) cpu mem
 executeTillHBlank :: Cpu -> Memory -> IO (Cpu, Memory)
 executeTillHBlank cpu mem = do { lcd     <- getLcd mem
                                ; cpumem' <- executeTillCycle (lcdModeToTiming $ lcd ^. lcdStatus . modeFlag) cpu mem
-                               ; lcd'    <- getLcd mem
+                               ; lcd'    <- getLcd (snd cpumem')
                                ; mem'    <- if lcd' ^. lcdControl . lcdEnabled then
                                               setLcd (stepLcd lcd') (snd cpumem')
                                             else
-                                              return mem
+                                              return (snd cpumem')
                                ; lcd''   <- getLcd mem'
                                ; if (lcd'' ^. lcdStatus . modeFlag) /= HBlank then
-                                   executeTillHBlank (fst cpumem') (snd cpumem')
+                                   executeTillHBlank (fst cpumem') mem'
                                  else
-                                   return cpumem' }
+                                   return (fst cpumem', mem') }
 
 -- | Execute till lcd transition TODO this is kinda tentative thing here.
 runSystem :: Cpu -> Memory -> IO (Cpu, Memory)
 runSystem cpu mem = executeTillHBlank cpu mem
 
+executeToPc :: Word16 -> IO (Cpu, Memory) -> IO (Cpu, Memory)
+executeToPc break cpumem = do { cpumem' <- cpumem
+                              ; if getRegisters (PHI, CLO) (fst cpumem') == break then
+                                  cpumem
+                                else
+                                  executeToPc break $! executeCurrInstr $! cpumem }
+
+-- NOTE this should probably be moved to debug module, but it's garbage.
+debugRegister :: Register -> IO (Cpu, Memory) -> IO Word8
+debugRegister reg cpumem = do { cpumem' <- cpumem
+                              ; return $ getRegister reg (fst cpumem') }
+
+-- NOTE this should probably be moved to debug module, but it's garbage.
+debugRegisters :: (Register, Register) -> IO (Cpu, Memory) -> IO Word16
+debugRegisters regs cpumem = do { cpumem' <- cpumem
+                                ; return $ getRegisters regs (fst cpumem') }

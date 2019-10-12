@@ -83,46 +83,143 @@ printMemory :: Memory -> Word16 -> IO ()
 printMemory mem addr = getMemory addr mem >>= \x -> putStrLn $ showHex x ""
 
 -- | Print reg prints contents of a register
-printReg :: Cpu -> Register -> IO ()
-printReg cpu reg = putStrLn $ showHex (getRegister reg cpu) ""
+--printReg :: Cpu -> Register -> IO ()
+--printReg cpu reg = putStrLn $ showHex (getRegister reg cpu) ""
+
+-- TODO I'd like to put this everywhere in the project.
+type Registers = (Register, Register)
+
+data DebugActionData = Word16 | Register | Registers | NullActionData
+  deriving (Eq)
+
+data DebugAction = DebugIdentity                         |
+                   DebugStep                             |
+                   DebugEnableBreak                      |
+                   DebugDisableBreak                     |
+                   DebugSetBreak Word16                  |
+                   DebugEnableLcd                        |
+                   DebugDisableLcd                       |
+                   DebugEnableInterrupts                 |
+                   DebugDisableInterrupts                |
+                   DebugPrintReg Register                |
+                   DebugPrintRegReg (Register, Register) |
+                   DebugGetMem Word16                    |
+                   DebugContinue
+  deriving (Eq)
+
+getDebugActionData :: DebugAction -> DebugActionData
+getDebugActionData DebugIdentity          = NullActionData
+getDebugActionData DebugStep              = NullActionData
+getDebugActionData DebugEnableBreak       = NullActionData
+getDebugActionData DebugDisableBreak      = NullActionData
+getDebugActionData (DebugSetBreak _)      = Word16
+getDebugActionData DebugEnableLcd         = NullActionData
+getDebugActionData DebugDisableLcd        = NullActionData
+getDebugActionData DebugEnableInterrupts  = NullActionData
+getDebugActionData DebugDisableInterrupts = NullActionData
+getDebugActionData (DebugPrintReg _)      = Register
+getDebugActionData (DebugPrintRegReg _)   = Registers
+getDebugActionData (DebugGetMem _)        = Word16
+getDebugActionData DebugContinue          = NullActionData
+
 
 data DebugState =
   DebugState
   {
-    _break      :: Word16,
-    _enableInts :: Bool
+    _dbgCurrAction  :: DebugAction,
+    _dbgBreak       :: Word16,
+    _dbgEnableBreak :: Bool,
+    _dbgEnableInts  :: Bool,
+    _dbgEnableLcd   :: Bool,
+    _dbgCpu         :: Cpu,
+    _dbgMem         :: Memory,
+    _dbgLcd         :: Lcd,
+    _dbgClock       :: Cycles
   }
 makeLenses ''DebugState
 
-data DebugCommand =
-  PrintMem Word16           |
-  PrintReg (Cpu -> Word16)  |
-  SetBreak Word16           |
-  StepForward               |
-  Continue                  |
-  Error
+setBreak :: DebugState -> Word16 -> DebugState
+setBreak dbg w16 = dbg & dbgBreak .~ w16
 
-strToReg :: String -> (Cpu -> Word16)
-strToReg "A"   = \cpu -> toWord16 $ getRegister A cpu
-strToReg "B"   = \cpu -> toWord16 $ getRegister B cpu
-strToReg "C"   = \cpu -> toWord16 $ getRegister C cpu
-strToReg "D"   = \cpu -> toWord16 $ getRegister D cpu
-strToReg "E"   = \cpu -> toWord16 $ getRegister E cpu
-strToReg "F"   = \cpu -> toWord16 $ getRegister F cpu
-strToReg "H"   = \cpu -> toWord16 $ getRegister H cpu
-strToReg "L"   = \cpu -> toWord16 $ getRegister L cpu
-strToReg "S"   = \cpu -> toWord16 $ getRegister SHI cpu
-strToReg "PLO" = \cpu -> toWord16 $ getRegister PLO cpu
-strToReg "PHI" = \cpu -> toWord16 $ getRegister PHI cpu
-strToReg "CLO" = \cpu -> toWord16 $ getRegister CLO cpu
-strToReg "HL"  = \cpu -> getRegisters (H, L) cpu
-strToReg "SP"  = \cpu -> getRegisters (SHI, PLO) cpu
-strToReg "PC"  = \cpu -> getRegisters (PHI, CLO) cpu
-strToReg _     = \cpu -> getRegisters (PHI, CLO) cpu
+enableBreak :: DebugState -> DebugState
+enableBreak dbg = dbg & dbgEnableBreak .~ True
 
-decodeDebugCommand :: [String] -> DebugCommand
-decodeDebugCommand str
-  | head str == "prmem" = PrintMem $ read (head . drop 1 $ str)
-  | head str == "prreg" = PrintReg $ strToReg (head . drop 1 $ str)
+disableBreak :: DebugState -> DebugState
+disableBreak dbg = dbg & dbgEnableBreak .~ False
 
---fetchCommand :: IO DebugCommand
+printMem :: DebugState -> Word16 -> IO String
+printMem dbg w16 = getMemory w16 (dbg ^. dbgMem) >>= \x -> return $ showHex x ""
+
+printReg :: DebugState -> Register -> String
+printReg dbg reg = showHex (getRegister reg (dbg ^. dbgCpu)) ""
+
+setDbgCpuMem :: (Cpu, Memory) -> DebugState -> DebugState
+setDbgCpuMem cpumem dbg = uncurry (\cpu mem -> dbg & dbgCpu .~ cpu & dbgMem .~ mem) cpumem
+
+dbgStep :: DebugState -> IO DebugState
+dbgStep dbg = do { cpumem <- executeCurrInstr (return ((dbg ^. dbgCpu), (dbg ^. dbgMem)))
+                 ; return $ setDbgCpuMem cpumem dbg }
+
+dbgContinue :: DebugState -> IO DebugState
+dbgContinue dbg
+  | dbg ^. dbgEnableBreak = do { cpumem <- executeToPc (dbg ^. dbgBreak) (return ((dbg ^. dbgCpu), (dbg ^. dbgMem)))
+                                 ; return $ setDbgCpuMem cpumem dbg }
+  | otherwise             = dbgStep dbg
+
+--TODO this is ugly as shit, maybe replace this with rankN types.
+dbgGetWord16 :: DebugAction -> Word16
+dbgGetWord16 (DebugSetBreak w) = w
+dbgGetWord16 (DebugGetMem w)   = w
+
+dbgGetRegister :: DebugAction -> Register
+dbgGetRegister (DebugPrintReg r) = r
+
+dbgGetRegisters :: DebugAction -> Registers
+dbgGetRegisters (DebugPrintRegReg rs) = rs
+
+debugEvalWord16 :: DebugState -> DebugAction -> IO DebugState
+debugEvalWord16 dbg (DebugSetBreak w) = return $ dbg & dbgBreak .~ w
+debugEvalWord16 dbg (DebugGetMem w) = do { d <- getMemory w (dbg ^. dbgMem)
+                                         ; putStrLn $ showHex d ""
+                                         ; return dbg }
+
+debugEvalRegister :: DebugState -> DebugAction -> IO DebugState
+debugEvalRegister dbg (DebugPrintReg r) = putStrLn (showHex (getRegister r (dbg ^. dbgCpu)) "") >> return dbg
+
+debugEvalRegisters :: DebugState -> DebugAction -> IO DebugState
+debugEvalRegisters dbg (DebugPrintRegReg rs) = putStrLn (showHex (getRegisters rs (dbg ^. dbgCpu)) "") >> return dbg
+
+dbgEval :: DebugState -> IO DebugState
+dbgEval dbg
+  | (dbg ^. dbgCurrAction) == DebugIdentity                  = return dbg
+  | (dbg ^. dbgCurrAction) == DebugEnableBreak               = return $ dbg & dbgEnableBreak .~ True
+  | (dbg ^. dbgCurrAction) == DebugDisableBreak              = return $ dbg & dbgEnableBreak .~ False
+  | (dbg ^. dbgCurrAction) == DebugEnableLcd                 = return $ dbg & dbgEnableLcd .~ True
+  | (dbg ^. dbgCurrAction) == DebugDisableLcd                = return $ dbg & dbgEnableLcd .~ False
+  | (dbg ^. dbgCurrAction) == DebugEnableInterrupts          = return $ dbg & dbgEnableInts .~ True
+  | (dbg ^. dbgCurrAction) == DebugDisableInterrupts         = return $ dbg & dbgEnableInts .~ False
+  | (dbg ^. dbgCurrAction) == DebugContinue                  = dbgContinue dbg
+  | (getDebugActionData (dbg ^. dbgCurrAction)) == Word16    = debugEvalWord16 dbg (dbg ^. dbgCurrAction)
+  | (getDebugActionData (dbg ^. dbgCurrAction)) == Register  = debugEvalRegister dbg (dbg ^. dbgCurrAction)
+  | (getDebugActionData (dbg ^. dbgCurrAction)) == Registers = debugEvalRegisters dbg (dbg ^. dbgCurrAction)
+
+parseHex :: String -> Word16
+parseHex str = read str
+
+-- TODO implement this.
+strToReg :: String -> Register
+
+-- TODO implement this.
+getDbgInfo :: String -> DebugState -> DebugState
+getDbgInfo str dbg
+  | str == "s"  = dbg & dbgCurrAction .~ DebugStep
+  | str == "eb" = dbg & dbgCurrAction .~ DebugEnableBreak
+  | str == "db" = dbg & dbgCurrAction .~ DebugDisableBreak
+  | str == "el" = dbg & dbgCurrAction .~ DebugEnableLcd
+  | str == "dl" = dbg & dbgCurrAction .~ DebugDisableLcd
+  | str == "ei" = dbg & dbgCurrAction .~ DebugEnableInterrupts
+  | str == "di" = dbg & dbgCurrAction .~ DebugDisableInterrupts
+  | str == "c"  = dbg & dbgCurrAction .~ DebugContinue
+  | (head str) == 'b' = dbg & dbgCurrAction .~ (DebugSetBreak (parseHex (tail (tail str))))
+  | (head str) == 'm' = dbg & dbgCurrAction .~ (DebugGetMem (parseHex (tail (tail str))))
+  | (head str) == 'r' = dbg &

@@ -19,7 +19,7 @@ import Control.Monad
 data Cpu =
   Cpu
   {
-    _registerA    :: Word8,
+    _registerA    :: Word8, 
     _registerB    :: Word8,
     _registerC    :: Word8,
     _registerD    :: Word8,
@@ -164,6 +164,8 @@ incrementWithFlags16 byte store = store increment .
     halfCarry = \cpu -> setOverflowHalfCarry16 increment byte cpu
     subtractf = \cpu -> setFlag subtractFlag False cpu
 
+
+
 -- | Check wether or not the sum overflows from an addition operation.
   -- Sum is the result and addend is any addend from the addition.
 setUnderflowCarry8 :: Word8 -> Word8 -> Cpu -> Cpu
@@ -297,6 +299,7 @@ subWithFlags8PlusC e1 e2 b f = f addition .
 
 -- | Represents given registers in the CPU.
 data Register = A | B | C | D | E | F | H | L | SHI | PLO | PHI | CLO
+  deriving (Eq)
 
 -- | Converts a register datum to a record accesor
 registerToFunc :: Register -> (Cpu -> Word8)
@@ -441,12 +444,18 @@ decrementMemoryRegReg rs mem cpu = do { d <- getMemory (getRegisters rs cpu) mem
 
 -- | adds two registers r1 and r2 together and stores the value in r1 and sets the appropriate flags.
 addRegWithRegWithFlags :: Register -> Register -> Cpu -> Cpu
-addRegWithRegWithFlags r1 r2 cpu = addWithFlags8 (getRegister r1 cpu) (getRegister r2 cpu) (\d -> (\cpu1 -> setRegister r1 d cpu)) cpu
+addRegWithRegWithFlags r1 r2 cpu = addWithFlags8 (getRegister r1 cpu) (getRegister r2 cpu) (\d -> (\cpu1 -> setRegister r1 d cpu1)) cpu
+
+-- | adds register to data and stores the value in r1 and sets the appropriate flags.
+addRegWithDataWithFlags :: Register -> Memory -> Cpu -> IO Cpu
+addRegWithDataWithFlags r1 mem cpu = do { d' <- getMemory (getRegisters (PHI, CLO) cpu1) mem
+                                        ; return $ addWithFlags8 (getRegister r1 cpu) d' (\d -> (\cpu2 -> setRegister r1 d cpu2)) cpu1}
+  where cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
 
 -- | adds two registers r1 and r2 together and stores the value in r1 and sets the appropriate flags.
 addRegWithRegWithFlagsPlusC :: Register -> Register -> Cpu -> Cpu
 addRegWithRegWithFlagsPlusC r1 r2 cpu = addWithFlags8PlusC (getRegister r1 cpu) (getRegister r2 cpu) (getFlag cpu carryFlag)
-                                       (\d -> (\cpu1 -> setRegister r1 d cpu)) cpu
+                                       (\d -> (\cpu1 -> setRegister r1 d cpu1)) cpu
 
 -- | adds two register together r1 and r2 and stores the value in r1 and sets no flags.
 addRegWithRegWithoutFlags :: Register -> Register -> Cpu -> Cpu
@@ -462,12 +471,18 @@ addRegRegWithRegRegWithoutFlags rs1 rs2 cpu = setRegisters rs1 ((getRegisters rs
 
 -- | subs r2 from r1 and stores the result back in r1
 subRegWithRegWithFlags :: Register -> Register -> Cpu -> Cpu
-subRegWithRegWithFlags r1 r2 cpu = subWithFlags8 (getRegister r1 cpu) (getRegister r2 cpu) (\d -> (\cpu1 -> setRegister r1 d cpu)) cpu
+subRegWithRegWithFlags r1 r2 cpu = subWithFlags8 (getRegister r1 cpu) (getRegister r2 cpu) (\d -> (\cpu1 -> setRegister r1 d cpu1)) cpu
+
+-- | subs A from d8.
+subDataWithFlags :: Memory -> Cpu -> IO Cpu
+subDataWithFlags mem cpu = getMemory (getRegisters (PHI, CLO) cpu1) mem >>= \x -> return $ subWithFlags8 (getRegister A cpu) (x) (\d -> (\cpu1 -> setRegister A d cpu1)) cpu1
+  where
+    cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
 
 -- | subs r2 from r1 and stores the result back in r1
 subRegWithRegWithFlagsPlusC :: Register -> Register -> Cpu -> Cpu
 subRegWithRegWithFlagsPlusC r1 r2 cpu = subWithFlags8PlusC (getRegister r1 cpu) (getRegister r2 cpu) (getFlag cpu carryFlag)
-                                       (\d -> (\cpu1 -> setRegister r1 d cpu)) cpu
+                                       (\d -> (\cpu1 -> setRegister r1 d cpu1)) cpu
 
 -- | Given a gameboy rotate it's accumulator to the left and store the 7th bit in the carry.
 rotateLeftACarry :: Cpu -> Cpu
@@ -519,6 +534,20 @@ xorReg r cpu = setRegister A (xor (getRegister A cpu) (getRegister r cpu)) cpu
 andReg :: Register -> Cpu -> Cpu
 andReg r cpu = setRegister A ((.&.) (getRegister A cpu) (getRegister r cpu)) cpu
 
+andData :: Memory -> Cpu -> IO Cpu
+andData mem cpu = do { d <- getMemory (getRegisters (PHI, CLO) cpu1) mem
+                     ; return $ setRegister A (getRegister A cpu1 .&. d) cpu1 }
+  where cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
+
+xorData :: Memory -> Cpu -> IO Cpu
+xorData mem cpu = do { d <- getMemory (getRegisters (PHI, CLO) cpu1) mem
+                     ; return $ setRegister A (xor (getRegister A cpu1) d) cpu1 }
+  where cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
+
+xorPtr :: Memory -> Cpu -> IO Cpu
+xorPtr  mem cpu = do { d <- getMemory (getRegisters (H, L) cpu) mem
+                     ; return $ setRegister A (xor (getRegister A cpu) d) cpu }
+
 -- | OR a register with the accumulator
 orReg :: Register -> Cpu -> Cpu
 orReg r cpu = setRegister A ((.|.) (getRegister A cpu) (getRegister r cpu)) cpu
@@ -527,13 +556,14 @@ orReg r cpu = setRegister A ((.|.) (getRegister A cpu) (getRegister r cpu)) cpu
 ldFFRegAddrReg :: Register -> Register -> Memory -> Cpu -> IO Memory
 ldFFRegAddrReg d s mem cpu = setMemory (0xFF00 + (toWord16 $ getRegister d cpu)) (getRegister s cpu) mem
 
--- | TODO double check logic also document this bad boy.
-ldMemDataWithRegReg :: (Register, Register) -> Memory -> Cpu -> IO Memory
+-- | TODO document this
+ldMemDataWithRegReg :: (Register, Register) -> Memory -> Cpu -> IO (Cpu, Memory)
 ldMemDataWithRegReg (r1, r2) mem cpu = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
                                           ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
-                                          ; let combinedMem = combineData mem1 mem2
-                                            in  do { cpuMem1 <- setMemory combinedMem (getRegister r2 cpu2) mem
-                                                   ; setMemory (combinedMem + 1) (getRegister r1 cpu) cpuMem1 }}
+                                          ; mem3 <- let combinedMem = combineData mem1 mem2
+                                                    in do { cpuMem1 <- setMemory combinedMem (getRegister r2 cpu2) mem
+                                                          ; setMemory (combinedMem + 1) (getRegister r1 cpu) cpuMem1 }
+                                          ; return (cpu2, mem3) }
   where
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
     cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
@@ -542,13 +572,25 @@ ldMemDataWithRegReg (r1, r2) mem cpu = do { mem1 <- getMemory (getRegisters (PHI
 ldMemDataWithReg :: Register -> Memory -> Cpu -> IO (Cpu, Memory)
 ldMemDataWithReg r mem cpu = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
                                 ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
-                                ; mem3 <- let combinedMem = combineData mem1 mem2
+                                ; mem3 <- let combinedMem = combineData mem2 mem1
                                            in setMemory combinedMem (getRegister r cpu2) mem
                                 ; return (cpu2, mem3) }
 
   where
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
     cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
+
+ldRegDataWithMem :: Register -> Memory -> Cpu -> IO Cpu
+ldRegDataWithMem r mem cpu = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
+                                ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
+                                ; mem3 <- let combinedMem = combineData mem2 mem1
+                                          in getMemory combinedMem mem
+                                ; return (setRegister r mem3 cpu2)}
+  where
+    cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
+    cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
+
+
 
 -- | TODO why do I not document anything.
 addRegWithRegRegMemWithFlags :: Register -> (Register, Register) -> Memory -> Cpu -> IO Cpu
@@ -591,6 +633,7 @@ ldAWithFFAndMemOffset cpu mem = do { offset <- getMemory (getRegisters (PHI,CLO)
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
 
 -- | TODO documentation and make it IO (Cpu, Memory)
+  -- tfw you write code you don't understand
 push :: Word16 -> Memory -> Cpu -> IO (Cpu, Memory)
 push d mem cpu = join (\cpu_ -> return $ pushByte dhi cpu_) =<< (pushByte dlo (cpu, mem))
   where
@@ -612,7 +655,7 @@ call :: Cpu -> Memory -> IO (Cpu, Memory)
 call cpu mem = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
                   ; mem2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
                   ; let combinedMem = combineData mem2 mem1
-                   in do { pushedCpu <- push (getRegisters (PHI, CLO) cpu3) mem cpu
+                   in do { pushedCpu <- push (getRegisters (PHI, CLO) cpu2) mem cpu
                          ; let setCpu = setRegisters (PHI, CLO) combinedMem (fst pushedCpu)
                            in return $ (decrementRegistersWithoutFlags (PHI, CLO) setCpu, snd pushedCpu) }}
   where
@@ -620,29 +663,44 @@ call cpu mem = do { mem1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
     cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
     cpu3 = incrementRegistersWithoutFlags (PHI, CLO) cpu2
 
+callif :: Bool -> Cpu -> Memory -> IO (Cpu, Memory)
+callif True cpu mem = call cpu mem
+callif False cpu mem = return ((incrementRegistersWithoutFlags (PHI, CLO) ((incrementRegistersWithoutFlags (PHI, CLO) cpu))), mem)
+
 -- | TODO document this.
 ret :: Cpu -> Memory -> IO Cpu
-ret cpu mem = do { mem1 <- getMemory (getRegisters (SHI, PLO) cpu1) mem
-                 ; mem2 <- getMemory (getRegisters (SHI, PLO) cpu2) mem
-                 ; let combinedMem = combineData mem1 mem2
-                   in return $ setRegisters (PHI, CLO) (combinedMem - 1) cpu2 }
-   where
-     cpu1 = incrementRegistersWithoutFlags (SHI, PLO) cpu
-     cpu2 = incrementRegistersWithoutFlags (SHI, PLO) cpu1
+ret cpu mem = pop (PHI, CLO) mem cpu
 
 -- | TODO document this.
 jumpRelative :: Cpu -> Memory -> IO Cpu
 jumpRelative cpu mem = do { d <- getMemory (getRegisters (PHI, CLO) cpu1) mem
-                         ; let signedJmp = wordToSignedInt d
-                           in return $ setRegisters (PHI, CLO)
-                           (fromIntegral ((fromIntegral $ getRegisters (PHI, CLO) cpu1) + signedJmp)) cpu1 }
+                          ; let signedJmp = wordToSignedInt d
+                            in return $ setRegisters (PHI, CLO)
+                            (fromIntegral ((fromIntegral $ getRegisters (PHI, CLO) cpu1) + signedJmp)) cpu1 }
   where
     cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
+
+jump :: Cpu -> Memory -> IO Cpu
+jump cpu mem = do { d1 <- getMemory (getRegisters (PHI, CLO) cpu1) mem
+                  ; d2 <- getMemory (getRegisters (PHI, CLO) cpu2) mem
+                  ; let combineMem = (combineData d2 d1) - 1
+                    in return $ setRegisters (PHI, CLO) combineMem cpu }
+  where
+    cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
+    cpu2 = incrementRegistersWithoutFlags (PHI, CLO) cpu1
 
 -- | TODO document this.
 jumpIfRelative :: Bool -> Cpu -> Memory -> IO Cpu
 jumpIfRelative False cpu mem = return $ incrementRegistersWithoutFlags (PHI, CLO) cpu
 jumpIfRelative True  cpu mem = jumpRelative cpu mem
+
+jumpIf :: Bool -> Cpu -> Memory -> IO Cpu
+jumpIf False cpu mem = return $ incrementRegistersWithoutFlags (PHI, CLO) cpu
+jumpIf True cpu mem = jump cpu mem
+
+retIf :: Bool -> Cpu -> Memory -> IO Cpu
+retIf False cpu mem = return $ incrementRegistersWithoutFlags (PHI, CLO) cpu
+retIf True  cpu mem = ret cpu mem
 
 --TODO daa sets flags apparently. also document this loser.
 daa :: Cpu -> Cpu
@@ -660,7 +718,8 @@ daa cpu = setRegister A (regA + calculateHigh + calculateLow) cpu
 
 -- | TODO Documentation pls.
 scf :: (Cpu -> Cpu)
-scf = (setFlag carryFlag True) . (setFlag (halfCarryFlag .&. subtractFlag) False)
+scf
+  = (setFlag carryFlag True) . (setFlag (halfCarryFlag .&. subtractFlag) False)
 
 -- | TODO Documentation pls.
 cpl :: (Cpu -> Cpu)
@@ -673,11 +732,19 @@ ccf cpu = (setFlag carryFlag (not $ getFlag cpu carryFlag)) . (setFlag (halfCarr
 -- | TODO We want the docs gotta get those docs.
 cp8 :: Cpu -> Memory -> IO Cpu
 cp8 cpu mem = do { d <- getMemory (getRegisters (PHI, CLO) cpu1) mem
-                 ; return $ subWithFlags8 (getRegister A cpu) d (\_ -> \cpu2 -> cpu2) cpu1 }
+                 ; return $ subWithFlags8 (getRegister A cpu) d (\_ cpu2 -> cpu2) cpu1 }
   where cpu1 = incrementRegistersWithoutFlags (PHI, CLO) cpu
 
 -- | TODO docs pls.
 cpReg :: Register -> Cpu -> Cpu
 cpReg r2 cpu = subWithFlags8 (getRegister A cpu) (getRegister r2 cpu) (\_ -> \cpu1 -> cpu1) cpu
+
+cphl :: Memory -> Cpu -> IO Cpu
+cphl mem cpu = getMemory (getRegisters (H, L) cpu) mem >>= \x -> return $ subWithFlags8 (getRegister A cpu) x (\_ cpu1 -> cpu1) cpu
+
+adc :: Register -> Memory -> Cpu -> IO Cpu
+adc r m c = do { d <- getMemory (getRegisters (PHI, CLO) c1) m
+               ; return $ addWithFlags8PlusC (getRegister r c) d (getFlag c carryFlag) (setRegister r) c1}
+  where c1 = incrementRegistersWithoutFlags (PHI, CLO) c
 
 {- END GLOBAL CPU OPERATIONS -}

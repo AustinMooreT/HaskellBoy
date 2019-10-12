@@ -132,10 +132,10 @@ type AddressingMode = (Word8 -> Word16, Bool)
   -- The boolean value is wether or not the bit is set or reset.
 addressingMode :: Bool -> AddressingMode
 addressingMode False = (\offset -> if offset > 127 then
-                                    0x8800 + ((toWord16 $ (offset - 128)) * 16)
+                                    0x8800 + (toWord16 (offset - 128) * 16)
                                   else
-                                    0x9000 + ((toWord16 offset) * 16), False)
-addressingMode True  = (\offset -> 0x8000 + ((toWord16 offset) * 16), True)
+                                    0x9000 + (toWord16 offset * 16), False)
+addressingMode True  = (\offset -> 0x8000 + (toWord16 offset * 16), True)
 
 -- | Represents a chunk of memory for the lcd reserved for a specific purpose.
 data TileMapMemoryBank =
@@ -498,32 +498,31 @@ stepLcd lcd = modeTransition . lyUpdate $ lcd
 getTileRow :: Word16 -> Memory -> Word8 -> Word8 -> Palette -> IO [Shade]
 getTileRow  addr mem start stop = \pal -> do { bh <- getMemory addr mem
                                              ; bl <- getMemory (addr + 1) mem
-                                             ; return $ reverse (map
-                                                                 (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
-                                                                 [(fromIntegral start') .. (fromIntegral stop')]) }
-  where start' = start `mod` 8
-        stop'  = stop `mod` 8
+                                             ; return  (map
+                                                         (\n -> bitsToShade (testBit bl n) (testBit bh n) pal)
+                                                         (reverse [(fromIntegral start') .. (fromIntegral stop')])) }
+  where start' = start
+        stop'  = stop
 
 getScanlineFromX :: ScrollX -> Memory -> Palette -> [Word16 -> IO [Shade]]
-getScanlineFromX scx mem pal = map (\(x,y) addr -> getTileRow addr mem x y pal) ((scxm,7):replicate 19 (0,7) ++ [(0, 7-scxm)])
+getScanlineFromX scx mem pal = map (\(x,y) addr -> getTileRow addr mem x y pal) (replicate 20 (0,7))
   where scxm = scx `mod` 8
         scxo = (scx - scxm) `div` 8
 
-
 -- | Given values for the scrollx scrolly and ly fetches an lcd scanline from a background map.
-  -- NOTE/TODO foldl (++) is O(n^2) fix this.
+  -- NOTE/TODO foldl (++) is O(n^2).
 renderLcdBgScanline :: ScrollX -> ScrollY -> LY -> TileMapMemoryBank -> AddressingMode -> Memory -> Palette -> IO [Shade]
-renderLcdBgScanline x y yoff (Bank start _ _) (adrMode, bo) mem pal = mapM (\(l,m) -> l >>= \l' -> m $ l')
+renderLcdBgScanline x y yoff (Bank start _ _) (adrMode, bo) mem pal = mapM (\(l,m) -> l >>= \l' -> m l')
                                                                       (zip
-                                                                       (map (\l -> getMemory (baseAddr + l) mem >>= \q -> return $ adrMode q) [0 .. 19])
+                                                                       (map (\l -> getMemory (baseAddr + l) mem >>= \q -> return ((adrMode q) + tileOff)) [0 .. 19])
                                                                        tileLines) >>= \o -> return $ concat o
   where x'        = toWord16 ((x - (x `mod` 8)) `div` 8)
-        y'        = toWord16 (((y + yoff) - ((y + yoff) `mod` 8)) `div` 8)
+        y'        = toWord16 (((y + yoff) `div` 8))
+        tileOff   = toWord16 (2*((y + yoff) `mod` 8))
         baseAddr  = ((start + 32*y') + x')
         tileLines = getScanlineFromX x mem pal
 
 {- ^ END SCANLINE RENDERING -}
-
 
 {- | BEGIN DISPLAY BUFFER -}
 
@@ -594,7 +593,3 @@ displayGlossBuffer b True  = display
 
 
 {- ^ END DISPLAY BUFFER -}
-
--- | NOTE/TODO Looking at this on 05/17/2019, and have no idea what it's for.
-  -- Looks like I was starting to make a binary tree. I won't remove it yet for fear of realizing I needed it.
-data DList = NULL | Node DList DList

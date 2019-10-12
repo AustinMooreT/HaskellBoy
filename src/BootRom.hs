@@ -1,263 +1,262 @@
 module BootRom (module BootRom) where
 
-import Lib
-import Memory
+import Data.Word
 
-loadBootRom :: Memory -> IO Memory
-loadBootRom gb = (\gb_ -> setMemory 0x00FF 0x50 gb_) .|
-                 (\gb_ -> setMemory 0x00FE 0xE0 gb_) .|
-                 (\gb_ -> setMemory 0x00FD 0x01 gb_) .|
-                 (\gb_ -> setMemory 0x00FC 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x00FB 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x00FA 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x00F9 0x86 gb_) .|
-                 (\gb_ -> setMemory 0x00F8 0xFB gb_) .|
-                 (\gb_ -> setMemory 0x00F7 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x00F6 0x05 gb_) .|
-                 (\gb_ -> setMemory 0x00F5 0x23 gb_) .|
-                 (\gb_ -> setMemory 0x00F4 0x86 gb_) .|
-                 (\gb_ -> setMemory 0x00F3 0x78 gb_) .|
-                 (\gb_ -> setMemory 0x00F2 0x19 gb_) .|
-                 (\gb_ -> setMemory 0x00F1 0x06 gb_) .|
-                 (\gb_ -> setMemory 0x00F0 0xF5 gb_) .|
-                 (\gb_ -> setMemory 0x00EF 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x00EE 0x34 gb_) .|
-                 (\gb_ -> setMemory 0x00ED 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x00EC 0x7D gb_) .|
-                 (\gb_ -> setMemory 0x00EB 0x23 gb_) .|
-                 (\gb_ -> setMemory 0x00EA 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x00E9 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x00E8 0xBE gb_) .|
-                 (\gb_ -> setMemory 0x00E7 0x13 gb_) .|
-                 (\gb_ -> setMemory 0x00E6 0x1A gb_) .|
-                 (\gb_ -> setMemory 0x00E5 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x00E4 0xA8 gb_) .|
-                 (\gb_ -> setMemory 0x00E3 0x11 gb_) .|
-                 (\gb_ -> setMemory 0x00E2 0x01 gb_) .|
-                 (\gb_ -> setMemory 0x00E1 0x04 gb_) .|
-                 (\gb_ -> setMemory 0x00E0 0x21 gb_) .|
-                 (\gb_ -> setMemory 0x00DF 0x3C gb_) .|
-                 (\gb_ -> setMemory 0x00DE 0x42 gb_) .|
-                 (\gb_ -> setMemory 0x00DD 0xA5 gb_) .|
-                 (\gb_ -> setMemory 0x00DC 0xB9 gb_) .|
-                 (\gb_ -> setMemory 0x00DB 0xA5 gb_) .|
-                 (\gb_ -> setMemory 0x00DA 0xB9 gb_) .|
-                 (\gb_ -> setMemory 0x00D9 0x42 gb_) .|
-                 (\gb_ -> setMemory 0x00D8 0x3C gb_) .|
-                 (\gb_ -> setMemory 0x00D7 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x00D6 0x33 gb_) .|
-                 (\gb_ -> setMemory 0x00D5 0xB9 gb_) .|
-                 (\gb_ -> setMemory 0x00D4 0xBB gb_) .|
-                 (\gb_ -> setMemory 0x00D3 0x9F gb_) .|
-                 (\gb_ -> setMemory 0x00D2 0x99 gb_) .|
-                 (\gb_ -> setMemory 0x00D1 0xDC gb_) .|
-                 (\gb_ -> setMemory 0x00D0 0xDD gb_) .|
-                 (\gb_ -> setMemory 0x00CF 0xCC gb_) .|
-                 (\gb_ -> setMemory 0x00CE 0xEC gb_) .|
-                 (\gb_ -> setMemory 0x00CD 0x0E gb_) .|
-                 (\gb_ -> setMemory 0x00CC 0x6E gb_) .|
-                 (\gb_ -> setMemory 0x00CB 0x63 gb_) .|
-                 (\gb_ -> setMemory 0x00CA 0x67 gb_) .|
-                 (\gb_ -> setMemory 0x00C9 0xBB gb_) .|
-                 (\gb_ -> setMemory 0x00C8 0xBB gb_) .|
-                 (\gb_ -> setMemory 0x00C7 0x99 gb_) .|
-                 (\gb_ -> setMemory 0x00C6 0xD9 gb_) .|
-                 (\gb_ -> setMemory 0x00C5 0xDD gb_) .|
-                 (\gb_ -> setMemory 0x00C4 0xDD gb_) .|
-                 (\gb_ -> setMemory 0x00C3 0xE6 gb_) .|
-                 (\gb_ -> setMemory 0x00C2 0x6E gb_) .|
-                 (\gb_ -> setMemory 0x00C1 0xCC gb_) .|
-                 (\gb_ -> setMemory 0x00C0 0xDC gb_) .|
-                 (\gb_ -> setMemory 0x00BF 0x0E gb_) .|
-                 (\gb_ -> setMemory 0x00BE 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x00BD 0x89 gb_) .|
-                 (\gb_ -> setMemory 0x00BC 0x88 gb_) .|
-                 (\gb_ -> setMemory 0x00BB 0x1F gb_) .|
-                 (\gb_ -> setMemory 0x00BA 0x11 gb_) .|
-                 (\gb_ -> setMemory 0x00B9 0x08 gb_) .|
-                 (\gb_ -> setMemory 0x00B8 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x00B7 0x0D gb_) .|
-                 (\gb_ -> setMemory 0x00B6 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x00B5 0x0C gb_) .|
-                 (\gb_ -> setMemory 0x00B4 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x00B3 0x83 gb_) .|
-                 (\gb_ -> setMemory 0x00B2 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x00B1 0x73 gb_) .|
-                 (\gb_ -> setMemory 0x00B0 0x03 gb_) .|
-                 (\gb_ -> setMemory 0x00AF 0x0B gb_) .|
-                 (\gb_ -> setMemory 0x00AE 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x00AD 0x0D gb_) .|
-                 (\gb_ -> setMemory 0x00AC 0xCC gb_) .|
-                 (\gb_ -> setMemory 0x00AB 0x66 gb_) .|
-                 (\gb_ -> setMemory 0x00AA 0x66 gb_) .|
-                 (\gb_ -> setMemory 0x00A9 0xED gb_) .|
-                 (\gb_ -> setMemory 0x00A8 0xCE gb_) .|
-                 (\gb_ -> setMemory 0x00A7 0xC9 gb_) .|
-                 (\gb_ -> setMemory 0x00A6 0x23 gb_) .|
-                 (\gb_ -> setMemory 0x00A5 0x22 gb_) .|
-                 (\gb_ -> setMemory 0x00A4 0x23 gb_) .|
-                 (\gb_ -> setMemory 0x00A3 0x22 gb_) .|
-                 (\gb_ -> setMemory 0x00A2 0xF5 gb_) .|
-                 (\gb_ -> setMemory 0x00A1 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x00A0 0x05 gb_) .|
-                 (\gb_ -> setMemory 0x009F 0x17 gb_) .|
-                 (\gb_ -> setMemory 0x009E 0x11 gb_) .|
-                 (\gb_ -> setMemory 0x009D 0xCB gb_) .|
-                 (\gb_ -> setMemory 0x009C 0xC1 gb_) .|
-                 (\gb_ -> setMemory 0x009B 0x17 gb_) .|
-                 (\gb_ -> setMemory 0x009A 0x11 gb_) .|
-                 (\gb_ -> setMemory 0x0099 0xCB gb_) .|
-                 (\gb_ -> setMemory 0x0098 0xC5 gb_) .|
-                 (\gb_ -> setMemory 0x0097 0x04 gb_) .|
-                 (\gb_ -> setMemory 0x0096 0x06 gb_) .|
-                 (\gb_ -> setMemory 0x0095 0x4F gb_) .|
-                 (\gb_ -> setMemory 0x0094 0xCB gb_) .|
-                 (\gb_ -> setMemory 0x0093 0x18 gb_) .|
-                 (\gb_ -> setMemory 0x0092 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x0091 0x16 gb_) .|
-                 (\gb_ -> setMemory 0x0090 0x4F gb_) .|
-                 (\gb_ -> setMemory 0x008F 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x008E 0x05 gb_) .|
-                 (\gb_ -> setMemory 0x008D 0xD2 gb_) .|
-                 (\gb_ -> setMemory 0x008C 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x008B 0x15 gb_) .|
-                 (\gb_ -> setMemory 0x008A 0x42 gb_) .|
-                 (\gb_ -> setMemory 0x0089 0xE0 gb_) .|
-                 (\gb_ -> setMemory 0x0088 0x90 gb_) .|
-                 (\gb_ -> setMemory 0x0087 0x42 gb_) .|
-                 (\gb_ -> setMemory 0x0086 0xF0 gb_) .|
-                 (\gb_ -> setMemory 0x0085 0xE2 gb_) .|
-                 (\gb_ -> setMemory 0x0084 0x87 gb_) .|
-                 (\gb_ -> setMemory 0x0083 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x0082 0x0C gb_) .|
-                 (\gb_ -> setMemory 0x0081 0xE2 gb_) .|
-                 (\gb_ -> setMemory 0x0080 0x7B gb_) .|
-                 (\gb_ -> setMemory 0x007F 0x06 gb_) .|
-                 (\gb_ -> setMemory 0x007E 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x007D 0x64 gb_) .|
-                 (\gb_ -> setMemory 0x007C 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x007B 0xC1 gb_) .|
-                 (\gb_ -> setMemory 0x007A 0x1E gb_) .|
-                 (\gb_ -> setMemory 0x0079 0x06 gb_) .|
-                 (\gb_ -> setMemory 0x0078 0x28 gb_) .|
-                 (\gb_ -> setMemory 0x0077 0x62 gb_) .|
-                 (\gb_ -> setMemory 0x0076 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x0075 0x83 gb_) .|
-                 (\gb_ -> setMemory 0x0074 0x1E gb_) .|
-                 (\gb_ -> setMemory 0x0073 0x7C gb_) .|
-                 (\gb_ -> setMemory 0x0072 0x24 gb_) .|
-                 (\gb_ -> setMemory 0x0071 0x13 gb_) .|
-                 (\gb_ -> setMemory 0x0070 0x0E gb_) .|
-                 (\gb_ -> setMemory 0x006F 0xF2 gb_) .|
-                 (\gb_ -> setMemory 0x006E 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x006D 0x1D gb_) .|
-                 (\gb_ -> setMemory 0x006C 0xF7 gb_) .|
-                 (\gb_ -> setMemory 0x006B 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x006A 0x0D gb_) .|
-                 (\gb_ -> setMemory 0x0069 0xFA gb_) .|
-                 (\gb_ -> setMemory 0x0068 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x0067 0x90 gb_) .|
-                 (\gb_ -> setMemory 0x0066 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x0065 0x44 gb_) .|
-                 (\gb_ -> setMemory 0x0064 0xF0 gb_) .|
-                 (\gb_ -> setMemory 0x0063 0x0C gb_) .|
-                 (\gb_ -> setMemory 0x0062 0x0E gb_) .|
-                 (\gb_ -> setMemory 0x0061 0x02 gb_) .|
-                 (\gb_ -> setMemory 0x0060 0x1E gb_) .|
-                 (\gb_ -> setMemory 0x005F 0x04 gb_) .|
-                 (\gb_ -> setMemory 0x005E 0x40 gb_) .|
-                 (\gb_ -> setMemory 0x005D 0xE0 gb_) .|
-                 (\gb_ -> setMemory 0x005C 0x91 gb_) .|
-                 (\gb_ -> setMemory 0x005B 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x005A 0x42 gb_) .|
-                 (\gb_ -> setMemory 0x0059 0xE0 gb_) .|
-                 (\gb_ -> setMemory 0x0058 0x57 gb_) .|
-                 (\gb_ -> setMemory 0x0057 0x64 gb_) .|
-                 (\gb_ -> setMemory 0x0056 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x0055 0x67 gb_) .|
-                 (\gb_ -> setMemory 0x0054 0xF3 gb_) .|
-                 (\gb_ -> setMemory 0x0053 0x18 gb_) .|
-                 (\gb_ -> setMemory 0x0052 0x0F gb_) .|
-                 (\gb_ -> setMemory 0x0051 0x2E gb_) .|
-                 (\gb_ -> setMemory 0x0050 0xF9 gb_) .|
-                 (\gb_ -> setMemory 0x004F 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x004E 0x0D gb_) .|
-                 (\gb_ -> setMemory 0x004D 0x32 gb_) .|
-                 (\gb_ -> setMemory 0x004C 0x08 gb_) .|
-                 (\gb_ -> setMemory 0x004B 0x28 gb_) .|
-                 (\gb_ -> setMemory 0x004A 0x3D gb_) .|
-                 (\gb_ -> setMemory 0x0049 0x0C gb_) .|
-                 (\gb_ -> setMemory 0x0048 0x0E gb_) .|
-                 (\gb_ -> setMemory 0x0047 0x99 gb_) .|
-                 (\gb_ -> setMemory 0x0046 0x2F gb_) .|
-                 (\gb_ -> setMemory 0x0045 0x21 gb_) .|
-                 (\gb_ -> setMemory 0x0044 0x99 gb_) .|
-                 (\gb_ -> setMemory 0x0043 0x10 gb_) .|
-                 (\gb_ -> setMemory 0x0042 0xEA gb_) .|
-                 (\gb_ -> setMemory 0x0041 0x19 gb_) .|
-                 (\gb_ -> setMemory 0x0040 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x003F 0xF9 gb_) .|
-                 (\gb_ -> setMemory 0x003E 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x003D 0x05 gb_) .|
-                 (\gb_ -> setMemory 0x003C 0x23 gb_) .|
-                 (\gb_ -> setMemory 0x003B 0x22 gb_) .|
-                 (\gb_ -> setMemory 0x003A 0x13 gb_) .|
-                 (\gb_ -> setMemory 0x0039 0x1A gb_) .|
-                 (\gb_ -> setMemory 0x0038 0x08 gb_) .|
-                 (\gb_ -> setMemory 0x0037 0x06 gb_) .|
-                 (\gb_ -> setMemory 0x0036 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x0035 0xD8 gb_) .|
-                 (\gb_ -> setMemory 0x0034 0x11 gb_) .|
-                 (\gb_ -> setMemory 0x0033 0xF3 gb_) .|
-                 (\gb_ -> setMemory 0x0032 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x0031 0x34 gb_) .|
-                 (\gb_ -> setMemory 0x0030 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x002F 0x7B gb_) .|
-                 (\gb_ -> setMemory 0x002E 0x13 gb_) .|
-                 (\gb_ -> setMemory 0x002D 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x002C 0x96 gb_) .|
-                 (\gb_ -> setMemory 0x002B 0xCD gb_) .|
-                 (\gb_ -> setMemory 0x002A 0x00 gb_) .|
-                 (\gb_ -> setMemory 0x0029 0x95 gb_) .|
-                 (\gb_ -> setMemory 0x0028 0xCD gb_) .|
-                 (\gb_ -> setMemory 0x0027 0x1A gb_) .|
-                 (\gb_ -> setMemory 0x0026 0x80 gb_) .|
-                 (\gb_ -> setMemory 0x0025 0x10 gb_) .|
-                 (\gb_ -> setMemory 0x0024 0x21 gb_) .|
-                 (\gb_ -> setMemory 0x0023 0x01 gb_) .|
-                 (\gb_ -> setMemory 0x0022 0x04 gb_) .|
-                 (\gb_ -> setMemory 0x0021 0x11 gb_) .|
-                 (\gb_ -> setMemory 0x0020 0x47 gb_) .|
-                 (\gb_ -> setMemory 0x001F 0xE0 gb_) .|
-                 (\gb_ -> setMemory 0x001E 0xFC gb_) .|
-                 (\gb_ -> setMemory 0x001D 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x001C 0x77 gb_) .|
-                 (\gb_ -> setMemory 0x001B 0x77 gb_) .|
-                 (\gb_ -> setMemory 0x001A 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x0019 0x32 gb_) .|
-                 (\gb_ -> setMemory 0x0018 0xE2 gb_) .|
-                 (\gb_ -> setMemory 0x0017 0xF3 gb_) .|
-                 (\gb_ -> setMemory 0x0016 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x0015 0x0C gb_) .|
-                 (\gb_ -> setMemory 0x0014 0xE2 gb_) .|
-                 (\gb_ -> setMemory 0x0013 0x32 gb_) .|
-                 (\gb_ -> setMemory 0x0012 0x80 gb_) .|
-                 (\gb_ -> setMemory 0x0011 0x3E gb_) .|
-                 (\gb_ -> setMemory 0x0010 0x11 gb_) .|
-                 (\gb_ -> setMemory 0x000F 0x0E gb_) .|
-                 (\gb_ -> setMemory 0x000E 0xFF gb_) .|
-                 (\gb_ -> setMemory 0x000D 0x26 gb_) .|
-                 (\gb_ -> setMemory 0x000C 0x21 gb_) .|
-                 (\gb_ -> setMemory 0x000B 0xFB gb_) .|
-                 (\gb_ -> setMemory 0x000A 0x20 gb_) .|
-                 (\gb_ -> setMemory 0x0009 0x7C gb_) .|
-                 (\gb_ -> setMemory 0x0008 0xCB gb_) .|
-                 (\gb_ -> setMemory 0x0007 0x32 gb_) .|
-                 (\gb_ -> setMemory 0x0006 0x9F gb_) .|
-                 (\gb_ -> setMemory 0x0005 0xFF gb_) .|
-                 (\gb_ -> setMemory 0x0004 0x21 gb_) .|
-                 (\gb_ -> setMemory 0x0003 0xAF gb_) .|
-                 (\gb_ -> setMemory 0x0002 0xFF gb_) .|
-                 (\gb_ -> setMemory 0x0001 0xFE gb_) .|
-                 (\gb_ -> setMemory 0x0000 0x31 gb_) $ gb
+getBootRom :: Word8 -> Word8
+getBootRom 0xFF = 0x50
+getBootRom 0xFE = 0xE0
+getBootRom 0xFD = 0x01
+getBootRom 0xFC = 0x3E
+getBootRom 0xFB = 0xFE
+getBootRom 0xFA = 0x20
+getBootRom 0xF9 = 0x86
+getBootRom 0xF8 = 0xFB
+getBootRom 0xF7 = 0x20
+getBootRom 0xF6 = 0x05
+getBootRom 0xF5 = 0x23
+getBootRom 0xF4 = 0x86
+getBootRom 0xF3 = 0x78
+getBootRom 0xF2 = 0x19
+getBootRom 0xF1 = 0x06
+getBootRom 0xF0 = 0xF5
+getBootRom 0xEF = 0x20
+getBootRom 0xEE = 0x34
+getBootRom 0xED = 0xFE
+getBootRom 0xEC = 0x7D
+getBootRom 0xEB = 0x23
+getBootRom 0xEA = 0xFE
+getBootRom 0xE9 = 0x20
+getBootRom 0xE8 = 0xBE
+getBootRom 0xE7 = 0x13
+getBootRom 0xE6 = 0x1A
+getBootRom 0xE5 = 0x00
+getBootRom 0xE4 = 0xA8
+getBootRom 0xE3 = 0x11
+getBootRom 0xE2 = 0x01
+getBootRom 0xE1 = 0x04
+getBootRom 0xE0 = 0x21
+getBootRom 0xDF = 0x3C
+getBootRom 0xDE = 0x42
+getBootRom 0xDD = 0xA5
+getBootRom 0xDC = 0xB9
+getBootRom 0xDB = 0xA5
+getBootRom 0xDA = 0xB9
+getBootRom 0xD9 = 0x42
+getBootRom 0xD8 = 0x3C
+getBootRom 0xD7 = 0x3E
+getBootRom 0xD6 = 0x33
+getBootRom 0xD5 = 0xB9
+getBootRom 0xD4 = 0xBB
+getBootRom 0xD3 = 0x9F
+getBootRom 0xD2 = 0x99
+getBootRom 0xD1 = 0xDC
+getBootRom 0xD0 = 0xDD
+getBootRom 0xCF = 0xCC
+getBootRom 0xCE = 0xEC
+getBootRom 0xCD = 0x0E
+getBootRom 0xCC = 0x6E
+getBootRom 0xCB = 0x63
+getBootRom 0xCA = 0x67
+getBootRom 0xC9 = 0xBB
+getBootRom 0xC8 = 0xBB
+getBootRom 0xC7 = 0x99
+getBootRom 0xC6 = 0xD9
+getBootRom 0xC5 = 0xDD
+getBootRom 0xC4 = 0xDD
+getBootRom 0xC3 = 0xE6
+getBootRom 0xC2 = 0x6E
+getBootRom 0xC1 = 0xCC
+getBootRom 0xC0 = 0xDC
+getBootRom 0xBF = 0x0E
+getBootRom 0xBE = 0x00
+getBootRom 0xBD = 0x89
+getBootRom 0xBC = 0x88
+getBootRom 0xBB = 0x1F
+getBootRom 0xBA = 0x11
+getBootRom 0xB9 = 0x08
+getBootRom 0xB8 = 0x00
+getBootRom 0xB7 = 0x0D
+getBootRom 0xB6 = 0x00
+getBootRom 0xB5 = 0x0C
+getBootRom 0xB4 = 0x00
+getBootRom 0xB3 = 0x83
+getBootRom 0xB2 = 0x00
+getBootRom 0xB1 = 0x73
+getBootRom 0xB0 = 0x03
+getBootRom 0xAF = 0x0B
+getBootRom 0xAE = 0x00
+getBootRom 0xAD = 0x0D
+getBootRom 0xAC = 0xCC
+getBootRom 0xAB = 0x66
+getBootRom 0xAA = 0x66
+getBootRom 0xA9 = 0xED
+getBootRom 0xA8 = 0xCE
+getBootRom 0xA7 = 0xC9
+getBootRom 0xA6 = 0x23
+getBootRom 0xA5 = 0x22
+getBootRom 0xA4 = 0x23
+getBootRom 0xA3 = 0x22
+getBootRom 0xA2 = 0xF5
+getBootRom 0xA1 = 0x20
+getBootRom 0xA0 = 0x05
+getBootRom 0x9F = 0x17
+getBootRom 0x9E = 0x11
+getBootRom 0x9D = 0xCB
+getBootRom 0x9C = 0xC1
+getBootRom 0x9B = 0x17
+getBootRom 0x9A = 0x11
+getBootRom 0x99 = 0xCB
+getBootRom 0x98 = 0xC5
+getBootRom 0x97 = 0x04
+getBootRom 0x96 = 0x06
+getBootRom 0x95 = 0x4F
+getBootRom 0x94 = 0xCB
+getBootRom 0x93 = 0x18
+getBootRom 0x92 = 0x20
+getBootRom 0x91 = 0x16
+getBootRom 0x90 = 0x4F
+getBootRom 0x8F = 0x20
+getBootRom 0x8E = 0x05
+getBootRom 0x8D = 0xD2
+getBootRom 0x8C = 0x20
+getBootRom 0x8B = 0x15
+getBootRom 0x8A = 0x42
+getBootRom 0x89 = 0xE0
+getBootRom 0x88 = 0x90
+getBootRom 0x87 = 0x42
+getBootRom 0x86 = 0xF0
+getBootRom 0x85 = 0xE2
+getBootRom 0x84 = 0x87
+getBootRom 0x83 = 0x3E
+getBootRom 0x82 = 0x0C
+getBootRom 0x81 = 0xE2
+getBootRom 0x80 = 0x7B
+getBootRom 0x7F = 0x06
+getBootRom 0x7E = 0x20
+getBootRom 0x7D = 0x64
+getBootRom 0x7C = 0xFE
+getBootRom 0x7B = 0xC1
+getBootRom 0x7A = 0x1E
+getBootRom 0x79 = 0x06
+getBootRom 0x78 = 0x28
+getBootRom 0x77 = 0x62
+getBootRom 0x76 = 0xFE
+getBootRom 0x75 = 0x83
+getBootRom 0x74 = 0x1E
+getBootRom 0x73 = 0x7C
+getBootRom 0x72 = 0x24
+getBootRom 0x71 = 0x13
+getBootRom 0x70 = 0x0E
+getBootRom 0x6F = 0xF2
+getBootRom 0x6E = 0x20
+getBootRom 0x6D = 0x1D
+getBootRom 0x6C = 0xF7
+getBootRom 0x6B = 0x20
+getBootRom 0x6A = 0x0D
+getBootRom 0x69 = 0xFA
+getBootRom 0x68 = 0x20
+getBootRom 0x67 = 0x90
+getBootRom 0x66 = 0xFE
+getBootRom 0x65 = 0x44
+getBootRom 0x64 = 0xF0
+getBootRom 0x63 = 0x0C
+getBootRom 0x62 = 0x0E
+getBootRom 0x61 = 0x02
+getBootRom 0x60 = 0x1E
+getBootRom 0x5F = 0x04
+getBootRom 0x5E = 0x40
+getBootRom 0x5D = 0xE0
+getBootRom 0x5C = 0x91
+getBootRom 0x5B = 0x3E
+getBootRom 0x5A = 0x42
+getBootRom 0x59 = 0xE0
+getBootRom 0x58 = 0x57
+getBootRom 0x57 = 0x64
+getBootRom 0x56 = 0x3E
+getBootRom 0x55 = 0x67
+getBootRom 0x54 = 0xF3
+getBootRom 0x53 = 0x18
+getBootRom 0x52 = 0x0F
+getBootRom 0x51 = 0x2E
+getBootRom 0x50 = 0xF9
+getBootRom 0x4F = 0x20
+getBootRom 0x4E = 0x0D
+getBootRom 0x4D = 0x32
+getBootRom 0x4C = 0x08
+getBootRom 0x4B = 0x28
+getBootRom 0x4A = 0x3D
+getBootRom 0x49 = 0x0C
+getBootRom 0x48 = 0x0E
+getBootRom 0x47 = 0x99
+getBootRom 0x46 = 0x2F
+getBootRom 0x45 = 0x21
+getBootRom 0x44 = 0x99
+getBootRom 0x43 = 0x10
+getBootRom 0x42 = 0xEA
+getBootRom 0x41 = 0x19
+getBootRom 0x40 = 0x3E
+getBootRom 0x3F = 0xF9
+getBootRom 0x3E = 0x20
+getBootRom 0x3D = 0x05
+getBootRom 0x3C = 0x23
+getBootRom 0x3B = 0x22
+getBootRom 0x3A = 0x13
+getBootRom 0x39 = 0x1A
+getBootRom 0x38 = 0x08
+getBootRom 0x37 = 0x06
+getBootRom 0x36 = 0x00
+getBootRom 0x35 = 0xD8
+getBootRom 0x34 = 0x11
+getBootRom 0x33 = 0xF3
+getBootRom 0x32 = 0x20
+getBootRom 0x31 = 0x34
+getBootRom 0x30 = 0xFE
+getBootRom 0x2F = 0x7B
+getBootRom 0x2E = 0x13
+getBootRom 0x2D = 0x00
+getBootRom 0x2C = 0x96
+getBootRom 0x2B = 0xCD
+getBootRom 0x2A = 0x00
+getBootRom 0x29 = 0x95
+getBootRom 0x28 = 0xCD
+getBootRom 0x27 = 0x1A
+getBootRom 0x26 = 0x80
+getBootRom 0x25 = 0x10
+getBootRom 0x24 = 0x21
+getBootRom 0x23 = 0x01
+getBootRom 0x22 = 0x04
+getBootRom 0x21 = 0x11
+getBootRom 0x20 = 0x47
+getBootRom 0x1F = 0xE0
+getBootRom 0x1E = 0xFC
+getBootRom 0x1D = 0x3E
+getBootRom 0x1C = 0x77
+getBootRom 0x1B = 0x77
+getBootRom 0x1A = 0x3E
+getBootRom 0x19 = 0x32
+getBootRom 0x18 = 0xE2
+getBootRom 0x17 = 0xF3
+getBootRom 0x16 = 0x3E
+getBootRom 0x15 = 0x0C
+getBootRom 0x14 = 0xE2
+getBootRom 0x13 = 0x32
+getBootRom 0x12 = 0x80
+getBootRom 0x11 = 0x3E
+getBootRom 0x10 = 0x11
+getBootRom 0x0F = 0x0E
+getBootRom 0x0E = 0xFF
+getBootRom 0x0D = 0x26
+getBootRom 0x0C = 0x21
+getBootRom 0x0B = 0xFB
+getBootRom 0x0A = 0x20
+getBootRom 0x09 = 0x7C
+getBootRom 0x08 = 0xCB
+getBootRom 0x07 = 0x32
+getBootRom 0x06 = 0x9F
+getBootRom 0x05 = 0xFF
+getBootRom 0x04 = 0x21
+getBootRom 0x03 = 0xAF
+getBootRom 0x02 = 0xFF
+getBootRom 0x01 = 0xFE
+getBootRom 0x00 = 0x31
 

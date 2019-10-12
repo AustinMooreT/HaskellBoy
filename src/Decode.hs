@@ -6,6 +6,7 @@
 module Decode (module Decode) where
 
 import Cpu
+import Interrupts
 import Memory
 
 import Data.Word
@@ -67,7 +68,7 @@ decodeOp 0x04 = Instruction 0x04 "INC B" const4 $ OpCpuOpCpu (\cpu -> return $ i
 decodeOp 0x05 = Instruction 0x05 "DEC B" const4 $ OpCpuOpCpu (\cpu -> return $ decrementRegisterWithFlags B cpu)
 decodeOp 0x06 = Instruction 0x06 "LD B, d8" const8 $ OpCpuMemOpCpu (ldRegWithData B)
 decodeOp 0x07 = Instruction 0x07 "RLCA" const4 $ OpCpuOpCpu (\cpu -> return $ rotateLeftACarry cpu)
-decodeOp 0x08 = Instruction 0x08 "LD (a16), SP" const20 $ h $ ldMemDataWithRegReg (SHI, PLO)
+decodeOp 0x08 = Instruction 0x08 "LD (a16), SP" const20 $ j $ ldMemDataWithRegReg (SHI, PLO)
 decodeOp 0x09 = Instruction 0x09 "ADD HL, BC" const8 $ f $ (\cpu -> return $ addRegRegWithRegRegWithFlags (H, L) (B, C) cpu)
 decodeOp 0x0A = Instruction 0x0A "LD A, (BC)" const8 $ g $ ldRegWithRegRegMem A (B, C)
 decodeOp 0x0B = Instruction 0x0B "DEC BC" const8 $ f $ (\cpu -> return $ decrementRegistersWithoutFlags (B, C) cpu)
@@ -75,7 +76,7 @@ decodeOp 0x0C = Instruction 0x0C "INC C" const4 $ f $ (\cpu -> return $ incremen
 decodeOp 0x0D = Instruction 0x0D "DEC C" const4 $ f $ (\cpu -> return $ decrementRegisterWithFlags C cpu)
 decodeOp 0x0E = Instruction 0x0E "LD C, d8" const8 $ g $ ldRegWithData C
 decodeOp 0x0F = Instruction 0x0F "RRCA" const4 $ f $ (\cpu -> return $ rotateRightACarry cpu)
---TODO 0x10 "STOP 0"
+decodeOp 0x10 = decodeOp 0
 decodeOp 0x11 = Instruction 0x11 "LD DE, d16" const12 $ g $ ldRegRegWithData (D, E)
 decodeOp 0x12 = Instruction 0x12 "LD (DE), A" const8 $ h $ ldMemRegRegWithReg (D, E) A
 decodeOp 0x13 = Instruction 0x13 "INC DE" const8 $ f $ (\cpu -> return $ incrementRegistersWithoutFlags (D, E) cpu)
@@ -86,7 +87,7 @@ decodeOp 0x17 = Instruction 0x17 "RLA" const4 $ f $ (\cpu -> return $ rotateLeft
 decodeOp 0x18 = Instruction 0x18 "JR r8" const12 $ g $ (\mem -> (\cpu -> jumpRelative cpu mem)) -- TODO this is a nasty hack.
 decodeOp 0x19 = Instruction 0x19 "ADD HL, DE" const8 $ f $ (\cpu -> return $ addRegRegWithRegRegWithFlags (H, L) (D, E) cpu)
 decodeOp 0x1A = Instruction 0x1A "LD A, (DE)" const8 $ g $ ldRegWithRegRegMem A (D, E)
-decodeOp 0x1B = Instruction 0x1B "DEC BC" const8 $ f $ (\cpu -> return $ decrementRegistersWithoutFlags (D, E) cpu)
+decodeOp 0x1B = Instruction 0x1B "DEC DE" const8 $ f $ (\cpu -> return $ decrementRegistersWithoutFlags (D, E) cpu)
 decodeOp 0x1C = Instruction 0x1C "INC E" const4 $ f $ (\cpu -> return $ incrementRegisterWithFlags E cpu)
 decodeOp 0x1D = Instruction 0x1D "DEC E" const4 $ f $ (\cpu -> return $ decrementRegisterWithFlags E cpu)
 decodeOp 0x1E = Instruction 0x1E "LD C, d8" const8 $ g $ ldRegWithData C
@@ -105,7 +106,7 @@ decodeOp 0x28 = Instruction 0x28 "JR Z,r8" (\gb -> condTime (getFlag gb zeroFlag
                 (\mem -> (\cpu ->  jumpIfRelative (getFlag cpu zeroFlag) cpu mem))
 decodeOp 0x29 = Instruction 0x29 "ADD HL, HL" const8 $ f $ (\cpu -> return $ addRegRegWithRegRegWithFlags (H, L) (H, L) cpu)
 decodeOp 0x2A = Instruction 0x2A "LD A, (HL+)" const8 $ g $ (\mem -> (\cpu -> do { ldedGB <- ldRegWithRegRegMem A (H,L) mem cpu -- NOTE this is fishy
-                                                                                 ; return $ incrementRegistersWithoutFlags (H, L) cpu }))
+                                                                                 ; return $ incrementRegistersWithoutFlags (H, L) ldedGB }))
 decodeOp 0x2B = Instruction 0x2B "DEC HL" const8 $ f $ (\cpu -> return $ decrementRegistersWithoutFlags (H, L) cpu)
 decodeOp 0x2C = Instruction 0x2C "INC L" const4 $ f $ (\cpu -> return $ incrementRegisterWithFlags L cpu)
 decodeOp 0x2D = Instruction 0x2D "DEC L" const4 $ f $ (\cpu -> return $ decrementRegisterWithFlags L cpu)
@@ -185,7 +186,7 @@ decodeOp 0x72 = Instruction 0x72 "LD (HL) D" const8 $ h $ ldMemRegRegWithReg (H,
 decodeOp 0x73 = Instruction 0x73 "LD (HL) E" const8 $ h $ ldMemRegRegWithReg (H, L) E
 decodeOp 0x74 = Instruction 0x74 "LD (HL) H" const8 $ h $ ldMemRegRegWithReg (H, L) H
 decodeOp 0x75 = Instruction 0x75 "LD (HL) L" const8 $ h $ ldMemRegRegWithReg (H, L) L
---TODO 0x76 "HALT"
+decodeOp 0x76 = Instruction 0x76 "HALT" const4 $ f $ fixCpu (\cpu -> decrementRegistersWithoutFlags (PHI, CLO) cpu)
 decodeOp 0x77 = Instruction 0x77 "LD (HL) A" const8 $ h $ ldMemRegRegWithReg (H, L) A
 decodeOp 0x78 = Instruction 0x78 "LD A B" const4 $ f $ fixCpu $ ldRegWithReg A B
 decodeOp 0x79 = Instruction 0x79 "LD A C" const4 $ f $ fixCpu $ ldRegWithReg A C
@@ -241,7 +242,7 @@ decodeOp 0xAA = Instruction 0xAA "XOR D" const4 $ f $ fixCpu $ xorReg D
 decodeOp 0xAB = Instruction 0xAB "XOR E" const4 $ f $ fixCpu $ xorReg E
 decodeOp 0xAC = Instruction 0xAC "XOR H" const4 $ f $ fixCpu $ xorReg H
 decodeOp 0xAD = Instruction 0xAD "XOR L" const4 $ f $ fixCpu $ xorReg L
---TODO 0xAE
+decodeOp 0xAE = Instruction 0xAE "XOR (HL)" const8 $ g $ xorPtr
 decodeOp 0xAF = Instruction 0xAF "XOR A" const4 $ f $ fixCpu $ xorReg A
 decodeOp 0xB0 = Instruction 0xB0 "OR B" const4 $ f $ fixCpu $ orReg B
 decodeOp 0xB1 = Instruction 0xB1 "OR C" const4 $ f $ fixCpu $ orReg C
@@ -257,13 +258,21 @@ decodeOp 0xBA = Instruction 0xBA "CP D" const4 $ f $ fixCpu $ cpReg D
 decodeOp 0xBB = Instruction 0xBB "CP E" const4 $ f $ fixCpu $ cpReg E
 decodeOp 0xBC = Instruction 0xBC "CP H" const4 $ f $ fixCpu $ cpReg H
 decodeOp 0xBD = Instruction 0xBD "CP L" const4 $ f $ fixCpu $ cpReg L
+decodeOp 0xBE = Instruction 0xBE "CP (HL)" const8 $ g $ cphl
 --TODO 0xBE
 decodeOp 0xBF = Instruction 0xBF "CP A" const4 $ f $ fixCpu $ cpReg A
 --TODO 0xC0
 decodeOp 0xC1 = Instruction 0xC1 "POP BC" const12 $ g $ pop (B, C)
---TODO 0xC2 - 0xC4
+decodeOp 0xC2 = Instruction 0xC2 "JP NZ (a16)" (\gb -> condTime (not $ getFlag gb zeroFlag) 16 12) $ g $
+                (\mem -> (\cpu -> jumpIf (not $ getFlag cpu zeroFlag) cpu mem))
+decodeOp 0xC3 = Instruction 0xC3 "JP (a16)" const16 $ g $ (\mem cpu -> jump cpu mem) -- LOL I write the worst APIs.
+decodeOp 0xC4 = Instruction 0xC4 "CALL NZ a16" (\gb -> condTime (not $ getFlag gb zeroFlag) 24 12) $ j $
+                (\mem -> (\cpu -> callif (not $ getFlag cpu zeroFlag) cpu mem))
+  --TODO 0xC4
 decodeOp 0xC5 = Instruction 0xC5 "PUSH BC" const16 $ j $ (\mem -> (\cpu -> push (getRegisters (B, C) cpu) mem cpu))
+decodeOp 0xC6 = Instruction 0xC6 "ADD A, d8" const8 $ g $ (addRegWithDataWithFlags A)
 --TODO 0xC6 - 0xC8
+decodeOp 0xC8 = Instruction 0xC8 "RET Z" (\gb -> condTime (getFlag gb zeroFlag) 20 8) $ g $ (\mem -> (\cpu -> retIf (getFlag cpu zeroFlag) cpu mem))
 decodeOp 0xC9 = Instruction 0xC9 "RET" const16 $ g $ (\mem -> (\cpu -> ret cpu mem))
 --TODO 0xCA
 decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" const8 $ g $
@@ -271,31 +280,59 @@ decodeOp 0xCB = Instruction 0xCB "[CB Instruction]" const8 $ g $
                                      ; return $ decodeCb cb (incrementRegistersWithoutFlags (PHI,CLO) cpu)}))
 --TODO 0xCC
 decodeOp 0xCD = Instruction 0xCD "CALL a8" const24 $ j $ (\mem -> (\cpu -> call cpu mem))
+decodeOp 0xCE = Instruction 0xCE "ADC A d8" const8 $ g $ (adc A)
+decodeOp 0xD0 = Instruction 0xD0 "RET NC" (\gb -> condTime (not $ getFlag gb carryFlag) 20 8) $ g $
+                (\mem -> (\cpu -> retIf (not $ getFlag cpu carryFlag) cpu mem))
+decodeOp 0xD5 = Instruction 0xD5 "PUSH DE" const16 $ j $ (\mem -> (\cpu -> push (getRegisters (D, E) cpu) mem cpu))
+decodeOp 0xD6 = Instruction 0xD6 "SUB d8" const8 $ g $ subDataWithFlags
+decodeOp 0xD8 = Instruction 0xD8 "RET C" (\gb -> condTime (getFlag gb carryFlag) 20 8) $ g $ (\mem -> (\cpu -> retIf (getFlag cpu carryFlag) cpu mem))
 --TODO 0xCE - 0xDF
 decodeOp 0xE0 = Instruction 0xE0 "LDH (a8), A" const12 $ j $ (\mem -> (\cpu -> ldFFAndMemOffsetWithA cpu mem))
---TODO 0xE1
+decodeOp 0xE1 = Instruction 0xE1 "POP HL" const12 $ g $ pop (H, L)
 decodeOp 0xE2 = Instruction 0xE2 "LD (C), A" const8 $ h $ ldFFRegAddrReg C A
 --TODO 0xE3 - E9
+decodeOp 0xE5 = Instruction 0xE5 "PUSH HL" const16 $ j $ (\mem -> (\cpu -> push (getRegisters (H, L) cpu) mem cpu))
+decodeOp 0xE6 = Instruction 0xE6 "AND d8" const8 $ g $ andData
+decodeOp 0xE9 = Instruction 0xE9 "JP (HL)" const4 $ f $ fixCpu $ (\cpu -> setRegisters (PHI, CLO) (getRegisters (H, L) cpu) cpu)
 decodeOp 0xEA = Instruction 0xEA "LD (a16), A" const16 $ j $ ldMemDataWithReg A
+decodeOp 0xEE = Instruction 0xEE "XOR d8" const8 $ g $ xorData
 --TODO 0xEB - 0xEF
 decodeOp 0xF0 = Instruction 0xF0 "LDH A, (a8)" const12 $ g $ (\mem -> (\cpu -> ldAWithFFAndMemOffset cpu mem))
+decodeOp 0xF1 = Instruction 0xF1 "POP AF" const12 $ g $ pop (A, F)
 --TODO 0xF1 - 0xFD
+decodeOp 0xF3 = Instruction 0xF3 "DI" const4 $ h $ (\mem _ -> setIMEFlag False mem)
+decodeOp 0xF5 = Instruction 0xF5 "PUSH AF" const16 $ j $ (\mem -> (\cpu -> push (getRegisters (A, F) cpu) mem cpu))
+decodeOp 0xF9 = Instruction 0xF9 "LD SP HL" const8 $ f $ fixCpu $ (\cpu -> (setRegisters (SHI, PLO) (getRegisters (H, L) cpu) cpu))
+decodeOp 0xFA = Instruction 0xFA "LD A (a16)" const16 $ g $ ldRegDataWithMem A
+decodeOp 0xFB = Instruction 0xFB "EI" const4 $ h $ (\mem _ -> setIMEFlag True mem)
 decodeOp 0xFE = Instruction 0xFE "CP d8" const8 $ g $ (\mem -> (\cpu -> cp8 cpu mem))
 --TODO 0xFF
 
 fetchCb :: Cpu -> Memory -> IO Word8
 fetchCb cpu mem = getMemory (getRegisters (PHI, CLO) cpu) mem
 
---TODO alot of cb instructions need to be implemented
+--TODO a lot of cb instructions need to be implemented
 decodeCb :: Word8 -> Cpu -> Cpu
-decodeCb 0x11 = rotateLeft C
+decodeCb 0x10 = \cpu -> let cpu1 = rotateLeft B cpu in setZero8 (getRegister B cpu1) cpu1
+decodeCb 0x11 = \cpu -> let cpu1 = rotateLeft C cpu in setZero8 (getRegister C cpu1) cpu1
+decodeCb 0x12 = \cpu -> let cpu1 = rotateLeft D cpu in setZero8 (getRegister D cpu1) cpu1
+decodeCb 0x13 = \cpu -> let cpu1 = rotateLeft E cpu in setZero8 (getRegister E cpu1) cpu1
+decodeCb 0x14 = \cpu -> let cpu1 = rotateLeft H cpu in setZero8 (getRegister H cpu1) cpu1
+decodeCb 0x15 = \cpu -> let cpu1 = rotateLeft L cpu in setZero8 (getRegister L cpu1) cpu1
+decodeCb 0x18 = \cpu -> let cpu1 = rotateRight B cpu in setZero8 (getRegister B cpu1) cpu1
+decodeCb 0x19 = \cpu -> let cpu1 = rotateRight C cpu in setZero8 (getRegister C cpu1) cpu1
+decodeCb 0x1A = \cpu -> let cpu1 = rotateRight D cpu in setZero8 (getRegister D cpu1) cpu1
+decodeCb 0x1B = \cpu -> let cpu1 = rotateRight E cpu in setZero8 (getRegister E cpu1) cpu1
+decodeCb 0x1C = \cpu -> let cpu1 = rotateRight H cpu in setZero8 (getRegister H cpu1) cpu1
+decodeCb 0x1D = \cpu -> let cpu1 = rotateRight L cpu in setZero8 (getRegister L cpu1) cpu1
 decodeCb 0x7C = testBitReg H 7
 
+-- TODO I don't remember what was going on down here.
 -- | Handles any dispatchable interrupts the gameboy has.
   -- This function also hanles all of the weird halting behavior.
-  -- TODO verify that HALT behaves properly.
-  -- TODO !!! EXTREME BUG !!! This crashes when getDispatchableInterrupts is [].
-  -- TODO fix this.
+  -- OLD TODO verify that HALT behaves properly.
+  -- OLD TODO !!! EXTREME BUG !!! This crashes when getDispatchableInterrupts is [].
+  -- OLD TODO fix this.
 --handleInterrupts :: Cpu -> IO Cpu
 --handleInterrupts gb
 --  | gb ^. ime = do { is <- getDispatchableInterrupts (gb ^. memory)
@@ -327,3 +364,4 @@ decodeCb 0x7C = testBitReg H 7
 --                           ; intGb  <- handleInterrupts evalGb --TODO interrupts are still based on my old clocking system.
 --                           ; cacheNextInstr gb }
 --  | otherwise = return $ (increaseClock 1 gb) & opWait %~ (\i -> i - 1) --TODO handle other hardware between machine cycles.
+

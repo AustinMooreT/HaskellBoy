@@ -11,7 +11,9 @@ import Data.Array.IO
 import Data.Array
 import Data.Word
 import Data.Bits
-
+import Numeric (showHex)
+import BootRom
+import Lib
 {-
 These are some notes on the layout of gameboy memory.
 0x0000 - 0x3FFF is the Non-switchable ROM bank. (ROM0)
@@ -32,7 +34,7 @@ registers (IO REGISTERS)
 data Memory =
   Memory
   {
-    _bytes :: IOUArray Word16 Word8
+    _bytes          :: IOUArray Word16 Word8
   }
 makeLenses ''Memory
 
@@ -75,14 +77,16 @@ set0xFF44 _ mem = writeArray (mem ^. bytes) 0xFF41 0b00000000 >>=
 getMemory :: Word16 -> Memory -> IO Word8
 getMemory 0xFF0F mem = get0xFF0F mem
 getMemory 0xFF41 mem = get0xFF41 mem
-getMemory addr   mem = readArray (mem ^. bytes) addr
+getMemory addr   mem = do { bootRomFlag <- readArray (mem ^. bytes) 0xFF50
+                          ; if (bootRomFlag == 0x00) && addr <= 0x00FF then
+                              return $ getBootRom (toWord8 addr)
+                            else readArray (mem ^. bytes) addr }
 
 -- | Uses 16 bit value addr as an index to set the element there to 8 bit value d.
 setMemory :: Word16 -> Word8 -> (Memory -> IO Memory)
 setMemory 0xFF0F d mem = set0xFF0F d mem
 setMemory 0xFF41 d mem = set0xFF41 d mem
-setMemory addr   d mem = writeArray (mem ^. bytes) addr d >>=
-                         \_ -> return mem;
+setMemory addr   d mem = writeArray (mem ^. bytes) addr d >> return mem
 
 memBegin :: Word16
 memBegin = 0x0000
@@ -92,5 +96,5 @@ memEnd = 0xFFFF
 
 loadMemorySnapshot :: FilePath -> Memory -> IO Memory
 loadMemorySnapshot fp mem = do { fileData <- BL.readFile fp
-                               ; memList  <- sequence $ map (\(byte, addr) -> setMemory addr byte mem) $ zip (BL.unpack fileData) [memBegin .. memEnd]
+                               ; memList  <- mapM (\(byte, addr) -> setMemory addr byte mem) $ zip (BL.unpack fileData) [memBegin .. memEnd]
                                ; return $ head memList }
