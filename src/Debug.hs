@@ -207,19 +207,19 @@ parseHex :: String -> Word16
 parseHex str = read str
 
 -- TODO implement this.
-strToReg :: String -> Register
+--strToReg :: String -> Register
 
 -- TODO implement this.
-getDbgInfo :: String -> DebugState -> DebugState
-getDbgInfo str dbg
-  | str == "s"  = dbg & dbgCurrAction .~ DebugStep
-  | str == "eb" = dbg & dbgCurrAction .~ DebugEnableBreak
-  | str == "db" = dbg & dbgCurrAction .~ DebugDisableBreak
-  | str == "el" = dbg & dbgCurrAction .~ DebugEnableLcd
-  | str == "dl" = dbg & dbgCurrAction .~ DebugDisableLcd
-  | str == "ei" = dbg & dbgCurrAction .~ DebugEnableInterrupts
-  | str == "di" = dbg & dbgCurrAction .~ DebugDisableInterrupts
-  | str == "c"  = dbg & dbgCurrAction .~ DebugContinue
-  | (head str) == 'b' = dbg & dbgCurrAction .~ (DebugSetBreak (parseHex (tail (tail str))))
-  | (head str) == 'm' = dbg & dbgCurrAction .~ (DebugGetMem (parseHex (tail (tail str))))
-  | (head str) == 'r' = dbg &
+--getDbgInfo :: String -> DebugState -> DebugState
+--getDbgInfo str dbg
+--  | str == "s"  = dbg & dbgCurrAction .~ DebugStep
+--  | str == "eb" = dbg & dbgCurrAction .~ DebugEnableBreak
+--  | str == "db" = dbg & dbgCurrAction .~ DebugDisableBreak
+--  | str == "el" = dbg & dbgCurrAction .~ DebugEnableLcd
+--  | str == "dl" = dbg & dbgCurrAction .~ DebugDisableLcd
+--  | str == "ei" = dbg & dbgCurrAction .~ DebugEnableInterrupts
+--  | str == "di" = dbg & dbgCurrAction .~ DebugDisableInterrupts
+--  | str == "c"  = dbg & dbgCurrAction .~ DebugContinue
+--  | (head str) == 'b' = dbg & dbgCurrAction .~ (DebugSetBreak (parseHex (tail (tail str))))
+--  | (head str) == 'm' = dbg & dbgCurrAction .~ (DebugGetMem (parseHex (tail (tail str))))
+--  | (head str) == 'r' = dbg &
